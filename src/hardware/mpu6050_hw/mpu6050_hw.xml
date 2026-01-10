@@ -1,0 +1,6 @@
+<library path="mpu6050_hw">
+  <class name="mpu6050_hw/MPU6050HW"
+         type="mpu6050_hw::MPU6050HW"
+         base_class_type="hardware_interface::SensorInterface"/>
+    <description>mpu6050_hw 的硬件插件iic </description>
+</library>

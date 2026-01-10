@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<robot name="four_wheel_chassis"
+       xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- ========================= 属性常量 ========================= -->
+  <xacro:property name="PI" value="3.1415926535897931"/>
+
+  <!-- ========================= 惯性宏 ========================= -->
+  <xacro:macro name="box_inertia" params="mass x y z">
+    <inertial>
+      <mass value="${mass}"/>
+      <inertia ixx="${mass*(y*y+z*z)/12}" ixy="0.0" ixz="0.0"
+               iyy="${mass*(x*x+z*z)/12}" iyz="0.0"
+               izz="${mass*(x*x+y*y)/12}"/>
+    </inertial>
+  </xacro:macro>
+
+  <xacro:macro name="cyl_inertia" params="mass r h">
+    <inertial>
+      <mass value="${mass}"/>
+      <inertia ixx="${mass*(3*r*r+h*h)/12}" ixy="0.0" ixz="0.0"
+               iyy="${mass*(3*r*r+h*h)/12}" iyz="0.0"
+               izz="${mass*r*r/2}"/>
+    </inertial>
+  </xacro:macro>
+
+  <!-- ========================= 车轮宏 ========================= -->
+  <xacro:macro name="create_wheel" params="name xyz rpy:='0 0 0'">
+    <link name="${name}_wheel">
+      <visual>
+        <geometry><cylinder radius="${wheel_radius}" length="${wheel_length}"/></geometry>
+        <origin xyz="0 0 0" rpy="${PI/2} 0 0"/>
+        <material name="black"/>
+      </visual>
+      <collision>
+        <geometry><cylinder radius="${wheel_radius}" length="${wheel_length}"/></geometry>
+        <origin xyz="0 0 0" rpy="${PI/2} 0 0"/>
+      </collision>
+      <xacro:cyl_inertia mass="${wheel_mass}" r="${wheel_radius}" h="${wheel_length}"/>
+    </link>
+
+    <joint name="${name}_wheel_joint" type="continuous">
+      <parent link="base_link"/>
+      <child link="${name}_wheel"/>
+      <origin xyz="${xyz}" rpy="${rpy}"/>
+      <axis xyz="0 1 0"/>
+    </joint>
+  </xacro:macro>
+
+</robot>

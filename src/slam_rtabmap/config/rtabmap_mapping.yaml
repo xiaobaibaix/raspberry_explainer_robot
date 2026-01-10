@@ -1,0 +1,67 @@
+# RTAB-Map 建图模式参数配置
+rtabmap:
+  ros__parameters:
+    # 基本参数
+    frame_id: "base_link"
+    odom_frame_id: "odom"
+    map_frame_id: "map"
+    publish_tf: true
+    tf_delay: 0.05
+    approx_sync: true
+    sync_queue_size: 10
+    
+    # 传感器话题配置
+    rgb_topic: "/camera/color/image_raw"
+    depth_topic: "/camera/depth/image_raw"
+    camera_info_topic: "/camera/color/camera_info"
+    scan_topic: "/scan"
+    imu_topic: "/imu_sensor_broadcaster/imu"
+    odom_topic: "/mecanum_drive_controller/odometry"
+    
+    # IMU 配置
+    wait_imu_to_init: true
+    gravity_opt: true
+    imu_noise_filter: 0.1
+    imu_filter_strategy: 1
+    imu_filter_noise_acc: 0.01
+    imu_filter_noise_gyro: 0.001
+    imu_filter_bias_acc: 0.1
+    imu_filter_bias_gyro: 0.01
+    
+    # 输出控制
+    grid_map: true
+    grid_size: 0.05
+    grid_range: 4.0
+    grid_updated: true
+    grid_cell_size: 0.05
+    grid_incremental: false
+    
+    cloud_output: true
+    cloud_decimation: 4
+    cloud_max_depth: 4.0
+    cloud_voxel_size: 0.05
+    cloud_noise_filter_radius: 0.0
+    cloud_noise_filter_min_neighbors: 5
+    
+    # # RTAB-Map 核心参数
+    # Mem/STMSize: 30
+    # Mem/LaserScanNormalK: 0
+    # Mem/UseOdomFeatures: false
+    # RGBD/NeighborLinkRefining: true
+    # RGBD/ProximityBySpace: true
+    # RGBD/OptimizeMaxError: 2.0
+    # RGBD/ProximityPathMaxNeighbors: 1
+    # RGBD/AngularUpdate: 0.1
+    # RGBD/LinearUpdate: 0.1
+    # Reg/Strategy: 1
+    # Vis/FeatureType: 6
+    # Vis/MaxFeatures: 1000
+    # Icp/PointToPlane: true
+    # Icp/PointToPlaneK: 20
+    # Icp/Iterations: 10
+    # Icp/Epsilon: 0.001
+    # Icp/MaxCorrespondenceDistance: 0.1
+    # Icp/CorrespondenceRatio: 0.01
+    # Icp/OutlierRatio: 0.7
+    # Icp/PointToPlaneRadius: 0.0
+    

@@ -1,0 +1,5 @@
+<?xml version="1.0"?>
+<launch>
+    <arg name="port" default="8888"/>
+    <node name="rosboard" pkg="rosboard" executable="rosboard_node" output="screen" parameters="[{port: $(arg port)}]"/>
+</launch>

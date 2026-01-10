@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<robot name="four_wheel_chassis"
+       xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- 颜色 -->
+  <xacro:property name="base_color" value="0 0.2 0.8 0.5"/>
+  <xacro:property name="wheel_color" value="0 0 0 1"/>
+  <xacro:property name="lidar_color" value="0.5 0 0 1"/>
+  <xacro:property name="imu_color" value="0.5 0.5 0.5 1"/>
+
+  <!-- ========================= 材质宏 ========================= -->
+  <material name="blue"><color rgba="${base_color}"/></material>
+  <material name="black"><color rgba="${wheel_color}"/></material>
+  <material name="red"><color rgba="${lidar_color}"/></material>
+  <material name="gray"><color rgba="${imu_color}"/></material>
+
+
+</robot>

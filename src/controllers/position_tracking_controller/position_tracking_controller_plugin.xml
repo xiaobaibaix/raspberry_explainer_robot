@@ -1,0 +1,9 @@
+<library path="position_tracking_controller">
+  <class name="position_tracking_controller/PositionTrackingController" 
+  type="position_tracking_controller::PositionTrackingController" 
+  base_class_type="controller_interface::ChainableControllerInterface">
+    <description>
+    The position tracking controller tracks the position of a robot.
+    </description>
+  </class>
+</library>

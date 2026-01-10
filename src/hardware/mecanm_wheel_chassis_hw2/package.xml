@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>mecanum_wheel_chassis_hw2</name>
+  <version>0.0.0</version>
+  <description>TODO: Package description</description>
+  <maintainer email="2308043842@qq.com">huazhi</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>pluginlib</depend>
+  <depend>hardware_interface</depend>
+  <depend>rclcpp</depend>
+  <depend>robot_msgs</depend>
+  <depend>rclcpp_lifecycle</depend>
+  <depend>serial_driver</depend>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+    <!-- 声明这是一个 ros2_control 硬件插件包 -->
+    <ros2_control plugin="${prefix}/mecanum_wheel_chassis_hw2.xml"/>
+    <!-- 声明插件库的路径 -->
+    <ament_index_cpp index_key="hardware_interface" value="${prefix}/mecanum_wheel_chassis_hw2.xml"/>
+  </export>
+</package>

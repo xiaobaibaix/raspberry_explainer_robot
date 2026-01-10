@@ -1,0 +1,24 @@
+smoother_server:
+  ros__parameters:
+    use_sim_time: False          # 与系统一致
+    smoother_plugins: ["simple_smoother"]
+    simple_smoother:
+      plugin: "nav2_smoother::SimpleSmoother"
+      tolerance: 1.0e-10        # 收敛阈值
+      max_its: 1000             # 最大迭代
+      do_refinement: true       # 收敛后再微调一次
+
+velocity_smoother:
+  ros__parameters:
+    use_sim_time: False
+    smoothing_frequency: 20.0   # 与 controller 同频即可
+    scale_velocities: false
+    feedback: "OPEN_LOOP"       # 里程计延迟低可改 CLOSED_LOOP
+    max_velocity: [0.26, 0.0, 1.0]   # vx, vy, vθ
+    min_velocity: [-0.26, 0.0, -1.0]
+    max_accel: [2.5, 0.0, 3.2]
+    max_decel: [-2.5, 0.0, -3.2]
+    odom_topic: "odom"
+    odom_duration: 0.1
+    deadband_velocity: [0.0, 0.0, 0.0]  # 电机死区
+    velocity_timeout: 1.0        # 1 s 没新指令就发 0

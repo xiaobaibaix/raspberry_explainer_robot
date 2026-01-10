@@ -1,0 +1,7 @@
+<library path="mecanum_wheel_chassis_hw2">  <!-- 库路径：对应 CMake install 到 lib/fake_hw/libfake_hw.so -->
+  <class name="mecanum_wheel_chassis_hw2/MecanumWheelChassisHW2"
+         type="mecanum_wheel_chassis_hw2::MecanumWheelChassisHW2"
+         base_class_type="hardware_interface::SystemInterface">
+    <description>麦轮底盘的硬件接口插件</description>
+  </class>
+</library>

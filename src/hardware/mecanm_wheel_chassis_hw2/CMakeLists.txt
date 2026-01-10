@@ -1,0 +1,51 @@
+cmake_minimum_required(VERSION 3.8)
+project(mecanum_wheel_chassis_hw2)
+
+if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  add_compile_options(-Wall -Wextra -Wpedantic)
+endif()
+
+# find dependencies
+find_package(ament_cmake REQUIRED)
+find_package(pluginlib REQUIRED)
+find_package(hardware_interface REQUIRED)
+find_package(rclcpp REQUIRED)
+find_package(rclcpp_lifecycle REQUIRED)
+find_package(serial_driver REQUIRED)
+find_package(robot_msgs REQUIRED)
+
+# 包含目录
+include_directories(
+  ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+ament_export_include_directories(
+  include
+)
+
+add_library(${PROJECT_NAME} SHARED
+  src/mecanum_wheel_chassis_hw2.cpp
+)
+
+# 目标编译特性
+target_compile_features(${PROJECT_NAME} PUBLIC c_std_99 cxx_std_17)
+
+# 目标依赖
+ament_target_dependencies(${PROJECT_NAME}
+  pluginlib
+  hardware_interface
+  rclcpp
+  rclcpp_lifecycle
+  serial_driver
+  robot_msgs
+)
+
+install(TARGETS ${PROJECT_NAME}
+   DESTINATION lib/${PROJECT_NAME}
+)
+
+install(DIRECTORY include/ DESTINATION include)
+
+pluginlib_export_plugin_description_file(hardware_interface mecanum_wheel_chassis_hw2.xml)
+
+ament_package()

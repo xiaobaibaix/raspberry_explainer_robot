@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ROS2D - 地图与雷达显示</title>
+
+  <!-- ROS2D 相关库 -->
+  <script src="https://cdn.jsdelivr.net/npm/easeljs@1.0.2/lib/easeljs.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/eventemitter2@6.4.9/lib/eventemitter2.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/roslib@1.3.0/build/roslib.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/ros2d@0.10.0/build/ros2d.min.js"></script>
+
+</head>
+
+<body>
+  <div class="app-container">
+    <!-- 左侧控制面板 -->
+    <div class="control-panel" id="controlPanel">
+      <div class="panel-header">
+        <h2>ROS2连接控制</h2>
+        <button class="toggle-btn" id="togglePanelBtn">
+          <span id="toggleIcon">◀</span>
+        </button>
+      </div>
+
+      <div class="panel-content" id="panelContent">
+        <!-- 连接设置 -->
+        <div class="control-group">
+          <h3>连接设置</h3>
+          <div class="form-group">
+            <label for="rosUrl">ROS Bridge URL</label>
+            <input type="text" id="rosUrl" class="form-control" value="ws://localhost:9090"
+              placeholder="ws://localhost:9090">
+          </div>
+
+          <div class="button-group">
+            <button id="connectBtn" class="btn btn-success">连接 ROS</button>
+            <button id="disconnectBtn" class="btn btn-danger" disabled>断开连接</button>
+          </div>
+        </div>
+
+        <!-- 话题订阅 -->
+        <div class="control-group">
+          <h3>话题订阅</h3>
+          <div class="form-group">
+            <label for="mapTopic">地图话题</label>
+            <input type="text" id="mapTopic" class="form-control" value="/map" placeholder="/map">
+          </div>
+
+          <div class="form-group">
+            <label for="lidarTopic">雷达话题</label>
+            <input type="text" id="lidarTopic" class="form-control" value="/scan" placeholder="/scan">
+          </div>
+
+          <div class="form-group">
+            <label for="poseTopic">位姿话题</label>
+            <input type="text" id="poseTopic" class="form-control" value="/amcl_pose" placeholder="/amcl_pose">
+          </div>
+
+          <div class="button-group">
+            <button id="subscribeBtn" class="btn btn-primary" disabled>订阅所有</button>
+            <button id="unsubscribeBtn" class="btn btn-danger" disabled>取消订阅</button>
+          </div>
+        </div>
+
+        <!-- 显示控制 -->
+        <div class="control-group">
+          <h3>显示控制</h3>
+          <div class="button-group">
+            <button id="showLidarBtn" class="btn btn-primary" disabled>显示雷达</button>
+            <button id="showRobotBtn" class="btn btn-primary" disabled>显示机器人</button>
+            <button id="resetViewBtn" class="btn btn-primary">重置视图</button>
+          </div>
+        </div>
+
+        <!-- 话题监视器 -->
+        <div class="control-group topic-monitor-container">
+          <h3>话题监视</h3>
+          <div class="topic-monitor-header">
+            <select id="topicSelector" class="form-control topic-selector">
+              <option value="">选择话题...</option>
+            </select>
+            <button id="refreshTopicsBtn" class="btn btn-secondary" disabled>刷新</button>
+            <button id="addTopicBtn" class="btn btn-primary" disabled>添加</button>
+          </div>
+
+          <div id="topicDrawers" class="topic-drawers">
+            <!-- 话题抽屉将在这里动态添加 -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 地图容器 -->
+    <div class="map-container">
+      <div id="map"></div>
+
+      <!-- 状态面板 -->
+      <div class="status-panel">
+        <h3>系统状态</h3>
+        <div class="status-grid">
+          <div class="status-item">
+            <span class="status-label">ROS连接:</span>
+            <span id="rosStatus" class="status-value status-disconnected">未连接</span>
+          </div>
+          <div class="status-item">
+            <span class="status-label">地图数据:</span>
+            <span id="mapStatus" class="status-value">无</span>
+          </div>
+          <div class="status-item">
+            <span class="status-label">雷达数据:</span>
+            <span id="lidarStatus" class="status-value">无</span>
+          </div>
+          <div class="status-item">
+            <span class="status-label">位姿数据:</span>
+            <span id="poseStatus" class="status-value">无</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 图例面板 -->
+      <div class="legend-panel">
+        <h3>图例说明</h3>
+        <div class="legend-item">
+          <div class="legend-color" style="background-color: #888;"></div>
+          <span class="legend-label">未知区域</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-color" style="background-color: #fff; border: 1px solid #ddd;"></div>
+          <span class="legend-label">空闲区域</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-color" style="background-color: #000;"></div>
+          <span class="legend-label">障碍物</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-color" style="background-color: #f00;"></div>
+          <span class="legend-label">雷达点云</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-color" style="background-color: #0f0; border: 1px solid #ddd;"></div>
+          <span class="legend-label">机器人位置</span>
+        </div>
+      </div>
+
+      <!-- 日志面板 -->
+      <div class="log-panel" id="logPanel">
+        <h3>系统日志</h3>
+        <div id="logContent"></div>
+      </div>
+
+      <!-- 操作提示 -->
+      <div class="help-panel">
+        <h3>操作提示</h3>
+        <div class="help-tip">• 鼠标左键拖拽地图</div>
+        <div class="help-tip">• 鼠标滚轮缩放地图</div>
+        <div class="help-tip">• 双击重置视图</div>
+        <div class="help-tip">• 快捷键: R=重置, C=居中, L=雷达</div>
+      </div>
+
+      <!-- 快速控制按钮 -->
+      <div class="quick-controls">
+        <button class="quick-btn" id="toggleLogBtn">显示日志</button>
+        <button class="quick-btn" id="toggleHelpBtn">隐藏提示</button>
+        <button class="quick-btn" id="clearLogBtn">清空日志</button>
+      </div>
+
+      <!-- 全屏按钮 -->
+      <button class="fullscreen-btn" id="fullscreenBtn">⛶</button>
+    </div>
+
+    <!-- 消息通知 -->
+    <div class="notification" id="notification"></div>
+  </div>
+
+</body>
+
+</html>

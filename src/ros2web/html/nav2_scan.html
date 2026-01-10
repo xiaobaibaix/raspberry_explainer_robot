@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ros2d - 地图显示 + 话题列表</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/easeljs@1.0.2/lib/easeljs.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/eventemitter2@6.4.9/lib/eventemitter2.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/roslib@1.3.0/build/roslib.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/ros2d@0.10.0/build/ros2d.min.js"></script>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: Arial, sans-serif;
+    }
+
+    .controls {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      z-index: 1000;
+      background: rgba(255, 255, 255, 0.9);
+      padding: 10px;
+      border-radius: 5px;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    }
+
+    /* 新增话题列表样式 */
+    .topic-list-panel {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      z-index: 1000;
+      background: rgba(255, 255, 255, 0.95);
+      padding: 15px;
+      border-radius: 5px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+      max-height: 80vh;
+      width: 350px;
+      overflow-y: auto;
+    }
+
+    .topic-list-title {
+      font-weight: bold;
+      margin-bottom: 10px;
+      padding-bottom: 5px;
+      border-bottom: 1px solid #eee;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .topic-list-refresh {
+      padding: 4px 8px;
+      font-size: 12px;
+      background: #2196F3;
+      color: white;
+      border: none;
+      border-radius: 3px;
+      cursor: pointer;
+    }
+
+    .topic-list-refresh:hover {
+      background: #1976D2;
+    }
+
+    .topic-item {
+      padding: 8px;
+      margin: 5px 0;
+      background: #f8f9fa;
+      border-radius: 4px;
+      border-left: 3px solid #2196F3;
+    }
+
+    .topic-name {
+      font-weight: bold;
+      color: #333;
+      margin-bottom: 3px;
+    }
+
+    .topic-type {
+      font-size: 12px;
+      color: #666;
+      word-break: break-all;
+    }
+
+    .no-topics {
+      color: #999;
+      font-style: italic;
+      text-align: center;
+      padding: 20px 0;
+    }
+
+    button {
+      padding: 8px 16px;
+      margin: 5px;
+      background: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    button:hover {
+      background: #45a049;
+    }
+
+    #map {
+      width: 100vw;
+      height: 100vh;
+      display: block;
+    }
+
+    .status {
+      margin-top: 10px;
+      font-size: 12px;
+      color: #666;
+    }
+
+    /* 滚动条美化 */
+    .topic-list-panel::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .topic-list-panel::-webkit-scrollbar-track {
+      background: #f1f1f1;
+      border-radius: 3px;
+    }
+
+    .topic-list-panel::-webkit-scrollbar-thumb {
+      background: #ccc;
+      border-radius: 3px;
+    }
+
+    .topic-list-panel::-webkit-scrollbar-thumb:hover {
+      background: #999;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="controls">
+    <button onclick="displayLaserScan()">显示雷达</button>
+    <button onclick="clearLaserScan()">清除雷达</button>
+    <button onclick="resetView()">重置视图</button>
+    <div class="status" id="status">未连接</div>
+  </div>
+
+  <!-- 新增话题列表面板 -->
+  <div class="topic-list-panel">
+    <div class="topic-list-title">
+      <span>ROS 2 话题列表</span>
+      <button class="topic-list-refresh" onclick="refreshTopicList()">刷新</button>
+    </div>
+    <div id="topic-list-container" class="topic-list-container">
+      <div class="no-topics">未连接到ROS或暂无话题</div>
+    </div>
+  </div>
+
+  <div id="map"></div>
+
+  <script>
+    // 初始化ROS连接
+    const hostname = window.location.hostname || "localhost";
+    var ros = new ROSLIB.Ros({
+      url: 'ws://' + hostname + ':9090' //
+    });
+
+    // ROS连接状态
+    ros.on('connection', function () {
+      console.log('成功连接到ROS');
+      document.getElementById('status').innerHTML = '已连接';
+      document.getElementById('status').style.color = '#4CAF50';
+      // 连接成功后自动获取话题列表
+      setTimeout(refreshTopicList, 500);
+    });
+
+    ros.on('error', function (error) {
+      console.log('ROS连接错误:', error);
+      document.getElementById('status').innerHTML = '连接错误';
+      document.getElementById('status').style.color = '#f44336';
+      updateTopicListUI([]); // 清空话题列表
+    });
+
+    ros.on('close', function () {
+      console.log('ROS连接已关闭');
+      document.getElementById('status').innerHTML = '未连接';
+      document.getElementById('status').style.color = '#666';
+      updateTopicListUI([]); // 清空话题列表
+    });
+
+    // 初始化2D地图查看器
+    var viewer = new ROS2D.Viewer({
+      divID: 'map',
+      width: window.innerWidth,
+      height: window.innerHeight
+    });
+
+    // 加载地图
+    var gridClient = new ROS2D.OccupancyGridClient({
+      ros: ros,
+      rootObject: viewer.scene,
+      continuous: true
+    });
+
+    gridClient.on('change', function () {
+      console.log('地图已更新');
+      viewer.scaleToDimensions(gridClient.currentGrid.width, gridClient.currentGrid.height);
+      viewer.shift(gridClient.currentGrid.pose.position.x, gridClient.currentGrid.pose.position.y);
+    });
+
+    // 全局变量
+    var laserSubscription = null;
+    var laserMarkers = null;
+    var isLaserDisplaying = false;
+
+    // 显示雷达扫描
+    function displayLaserScan() {
+      if (isLaserDisplaying) {
+        console.log('雷达已在显示中');
+        return;
+      }
+
+      console.log('开始显示雷达扫描');
+      isLaserDisplaying = true;
+
+      // 创建激光雷达数据监听器
+      laserSubscription = new ROSLIB.Topic({
+        ros: ros,
+        name: '/scan',
+        messageType: 'sensor_msgs/msg/LaserScan'
+      });
+
+      // 创建容器用于显示雷达点
+      laserMarkers = new createjs.Container();
+
+      // 订阅激光雷达数据
+      laserSubscription.subscribe(function (msg) {
+        // 清除之前的点
+        while (laserMarkers.children.length > 0) {
+          laserMarkers.removeChildAt(0);
+        }
+
+        const num = msg.ranges.length;
+        if (num === 0) {
+          console.log('没有雷达数据');
+          return;
+        }
+
+        // 计算每个角度
+        const angleIncrement = msg.angle_increment;
+        const currentAngle = msg.angle_min;
+
+        // 创建图形
+        const graphics = new createjs.Graphics()
+          .beginFill(createjs.Graphics.getRGB(255, 0, 0, 0.7))  // 红色，70%透明度
+          .drawCircle(0, 0, 0.05)  // 2像素半径
+          .endFill();
+
+        // 为每个有效的测量点创建图形
+        for (let i = 0; i < num; i++) {
+          const range = msg.ranges[i];
+          const intensity = msg.intensities && msg.intensities.length > i ? msg.intensities[i] : 1.0;
+
+          // 检查测量值是否有效
+          if (range >= msg.range_min && range <= msg.range_max && !isNaN(range)) {
+            const angle = currentAngle + (i * angleIncrement);
+
+            // 从极坐标转换为笛卡尔坐标
+            const x = range * Math.cos(angle);
+            const y = range * Math.sin(angle);
+
+            // 创建点
+            const point = new createjs.Shape(graphics);
+            point.x = x;
+            point.y = -y;  // 注意：ROS2D的Y轴是向下的，所以取负
+
+            // 根据强度调整透明度
+            if (intensity > 0) {
+              point.alpha = Math.min(1.0, intensity * 0.5);
+            }
+
+            laserMarkers.addChild(point);
+          }
+        }
+      });
+
+      // 添加到场景
+      viewer.addObject(laserMarkers);
+      console.log('雷达显示已启动');
+
+      // 更新状态
+      document.getElementById('status').innerHTML = '已连接 - 显示雷达中';
+    }
+
+    // 清除雷达扫描
+    function clearLaserScan() {
+      if (laserSubscription) {
+        laserSubscription.unsubscribe();
+        laserSubscription = null;
+      }
+
+      if (laserMarkers && viewer.scene.contains(laserMarkers)) {
+        viewer.scene.removeChild(laserMarkers);
+        laserMarkers = null;
+      }
+
+      isLaserDisplaying = false;
+      console.log('雷达显示已清除');
+      document.getElementById('status').innerHTML = '已连接';
+    }
+
+    // 重置视图
+    function resetView() {
+      if (gridClient.currentGrid) {
+        viewer.scaleToDimensions(gridClient.currentGrid.width, gridClient.currentGrid.height);
+        viewer.shift(gridClient.currentGrid.pose.position.x, gridClient.currentGrid.pose.position.y);
+      }
+      console.log('视图已重置');
+    }
+
+    // 窗口大小变化时调整地图大小
+    window.addEventListener('resize', function () {
+      viewer.width = window.innerWidth;
+      viewer.height = window.innerHeight;
+      viewer.stage.canvas.width = viewer.width;
+      viewer.stage.canvas.height = viewer.height;
+    });
+
+    /**
+     * ROS 2 原生获取话题列表（关键修复：调用rcl_interfaces的服务）
+     */
+    function getROSTopics() {
+      return new Promise((resolve, reject) => {
+        if (!ros || !ros.isConnected) {
+          reject(new Error('未连接到ROS 2'));
+          return;
+        }
+
+        // ROS 2 原生服务：获取话题名和类型
+        const getTopicsService = new ROSLIB.Service({
+          ros: ros,
+          name: '/rcl_interfaces/get_topic_names_and_types',
+          serviceType: 'rcl_interfaces/srv/GetTopicNamesAndTypes'
+        });
+
+        // 构造空请求（该服务不需要参数）
+        const request = new ROSLIB.ServiceRequest();
+
+        // 调用ROS 2原生服务
+        getTopicsService.callService(request, function (response) {
+          console.log('ROS 2 原生话题数据:', response);
+          
+          // 格式化数据
+          const formattedTopics = [];
+          if (response.topic_names && response.topic_types) {
+            // 匹配话题名和类型（ROS 2 返回的是两个数组，按索引对应）
+            for (let i = 0; i < response.topic_names.length; i++) {
+              const topicName = response.topic_names[i];
+              // topic_types是二维数组，每个元素是该话题的类型列表
+              const topicType = response.topic_types[i] && response.topic_types[i].length > 0 
+                ? response.topic_types[i][0] 
+                : 'unknown';
+              
+              formattedTopics.push({
+                name: topicName,
+                type: topicType
+              });
+            }
+          }
+
+          resolve(formattedTopics);
+        }, function (error) {
+          console.error('调用ROS 2话题服务失败:', error);
+          
+          // 降级方案：尝试rosbridge的topics接口（兼容旧版本）
+          try {
+            ros.topics(function (topics) {
+              const formatted = topics.map(t => ({
+                name: t.name,
+                type: t.type || 'unknown'
+              }));
+              resolve(formatted);
+            }, (err) => reject(new Error(`获取话题失败: ${err.message}`)));
+          } catch (err2) {
+            reject(new Error(`服务调用失败且降级方案无效: ${err2.message}`));
+          }
+        });
+      });
+    }
+
+    /**
+     * 更新话题列表UI
+     */
+    function updateTopicListUI(topics) {
+      const container = document.getElementById('topic-list-container');
+      container.innerHTML = '';
+
+      if (!topics || topics.length === 0) {
+        container.innerHTML = '<div class="no-topics">暂无话题数据</div>';
+        return;
+      }
+
+      // 按话题名排序
+      topics.sort((a, b) => a.name.localeCompare(b.name));
+
+      // 创建话题项
+      topics.forEach(topic => {
+        const topicItem = document.createElement('div');
+        topicItem.className = 'topic-item';
+        
+        const topicName = document.createElement('div');
+        topicName.className = 'topic-name';
+        topicName.textContent = topic.name;
+        
+        const topicType = document.createElement('div');
+        topicType.className = 'topic-type';
+        topicType.textContent = `类型: ${topic.type}`;
+        
+        topicItem.appendChild(topicName);
+        topicItem.appendChild(topicType);
+        container.appendChild(topicItem);
+      });
+    }
+
+    /**
+     * 刷新话题列表
+     */
+    async function refreshTopicList() {
+      const container = document.getElementById('topic-list-container');
+      container.innerHTML = '<div class="no-topics">正在加载...</div>';
+      
+      try {
+        const topics = await getROSTopics();
+        updateTopicListUI(topics);
+      } catch (error) {
+        console.error('刷新话题列表失败:', error);
+        container.innerHTML = `<div class="no-topics" style="color: #f44336;">加载失败: ${error.message}</div>`;
+      }
+    }
+
+    // 调试信息
+    console.log('ros2d地图页面已加载');
+    console.log('连接地址:', 'ws://' + hostname + ':9090');
+    console.log('可用功能:');
+    console.log('1. 点击"显示雷达"按钮显示激光雷达数据');
+    console.log('2. 点击"清除雷达"按钮清除雷达显示');
+    console.log('3. 点击"重置视图"按钮重置地图视图');
+    console.log('4. 按L键显示雷达，R键重置视图，ESC键清除雷达，T键刷新话题列表');
+    console.log('5. 右侧面板显示ROS 2所有话题及数据类型');
+    
+  </script>
+</body>
+
+</html>

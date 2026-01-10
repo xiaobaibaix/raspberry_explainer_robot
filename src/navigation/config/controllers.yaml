@@ -1,0 +1,73 @@
+controller_server:
+  ros__parameters:
+    # transform_tolerance: 0.5
+    transform_tolerance: 20.0
+    cmd_vel_topic: /mecanum_controller/cmd_vel
+    use_sim_time: false
+    controller_frequency: 5.0
+    min_x_velocity_threshold: 0.001
+    min_y_velocity_threshold: 0.001   # ← 允许横移
+    min_theta_velocity_threshold: 0.001
+    failure_tolerance: 0.3  #容错
+    progress_checker_plugin: "progress_checker"
+    goal_checker_plugins: ["general_goal_checker"]
+    controller_plugins: ["FollowPath"]
+
+    # Progress checker
+    progress_checker:
+      plugin: "nav2_controller::SimpleProgressChecker"
+      required_movement_radius: 0.5
+      movement_time_allowance: 10.0
+
+    # Goal checker
+    general_goal_checker:
+      stateful: True
+      plugin: "nav2_controller::SimpleGoalChecker"
+      xy_goal_tolerance: 0.25
+      yaw_goal_tolerance: 0.25
+
+    # ----------- 全向 DWB 参数 -----------
+    FollowPath:
+      plugin: "dwb_core::DWBLocalPlanner"
+      debug_trajectory_details: False
+      # 速度边界
+      min_vel_x: -0.26
+      max_vel_x:  0.26
+      min_vel_y: -0.26          # 新增：后退横移
+      max_vel_y:  0.26
+      max_vel_theta: 1.0
+      min_speed_xy: 0.0
+      max_speed_xy: 0.26        # 合成速度上限
+      min_speed_theta: 0.0
+      # 加速度边界
+      acc_lim_x: 2.5
+      acc_lim_y: 2.5            # 新增：Y 向加速度
+      acc_lim_theta: 3.2
+      decel_lim_x: -2.5
+      decel_lim_y: -2.5
+      decel_lim_theta: -3.2
+      # 采样密度
+      vx_samples: 8
+      vy_samples: 6             # 至少 10，横移才连续
+      vtheta_samples: 12
+      sim_time: 1.0
+      linear_granularity: 0.05
+      angular_granularity: 0.025
+      transform_tolerance: 0.5
+      xy_goal_tolerance: 0.25
+      trans_stopped_velocity: 0.25
+      short_circuit_trajectory_evaluation: True
+      stateful: True
+
+      # critics 权重（麦轮斜行时降低一点对齐强度，走线更自然）
+      critics: ["RotateToGoal", "Oscillation", "BaseObstacle", "GoalAlign", "PathAlign", "PathDist", "GoalDist"]
+      BaseObstacle.scale: 0.02
+      PathAlign.scale: 24.0          # 原 32 → 24
+      PathAlign.forward_point_distance: 0.1
+      GoalAlign.scale: 18.0          # 原 24 → 18
+      GoalAlign.forward_point_distance: 0.1
+      PathDist.scale: 32.0
+      GoalDist.scale: 24.0
+      RotateToGoal.scale: 32.0
+      RotateToGoal.slowing_factor: 5.0
+      RotateToGoal.lookahead_time: -1.0

@@ -1,0 +1,28 @@
+# RTAB-Map 定位模式参数配置
+rtabmap:
+  ros__parameters:
+    # 定位模式
+    localization: true
+    
+    # 加载已有地图
+    database_path: "~/maps/rtabmap.db"
+    
+    # 其他参数与建图模式类似，但关闭建图相关功能
+    grid_map: true
+    grid_updated: false
+    grid_incremental: false
+    
+    cloud_output: true
+    cloud_decimation: 4
+    
+    # 定位优化参数
+    Vis/IncrementalMemory: false
+    Mem/STMSize: 1
+    RGBD/OptimizeMaxError: 1.0
+    
+    # 其他参数保持与建图模式一致
+    frame_id: "base_link"
+    odom_frame_id: "odom"
+    map_frame_id: "map"
+    publish_tf: true
+    approx_sync: true

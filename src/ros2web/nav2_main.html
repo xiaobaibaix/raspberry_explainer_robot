@@ -1,0 +1,2021 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ROS2D - 地图与雷达显示</title>
+  
+  <!-- ROS2D 相关库 -->
+  <script src="https://cdn.jsdelivr.net/npm/easeljs@1.0.2/lib/easeljs.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/eventemitter2@6.4.9/lib/eventemitter2.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/roslib@1.3.0/build/roslib.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/ros2d@0.10.0/build/ros2d.min.js"></script>
+  
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #f5f7fa;
+      color: #333;
+      overflow: hidden;
+      height: 100vh;
+    }
+    
+    /* 主容器 */
+    .app-container {
+      display: flex;
+      height: 100vh;
+      position: relative;
+    }
+    
+    /* 左侧控制面板 */
+    .control-panel {
+      width: 350px;
+      background-color: #fff;
+      box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+      transition: all 0.3s ease;
+      display: flex;
+      flex-direction: column;
+      z-index: 1000;
+      position: relative;
+    }
+    
+    .control-panel.collapsed {
+      width: 50px;
+    }
+    
+    .control-panel.collapsed .panel-content {
+      opacity: 0;
+      visibility: hidden;
+      height: 0;
+      overflow: hidden;
+    }
+    
+    .control-panel.collapsed .panel-header h2 {
+      display: none;
+    }
+    
+    /* 面板头部 */
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 15px 20px;
+      background-color: #2c3e50;
+      color: white;
+    }
+    
+    .panel-header h2 {
+      font-size: 18px;
+      font-weight: 500;
+      margin: 0;
+    }
+    
+    .toggle-btn {
+      background: none;
+      border: none;
+      color: white;
+      cursor: pointer;
+      font-size: 18px;
+      padding: 5px;
+      border-radius: 4px;
+      transition: background-color 0.2s;
+    }
+    
+    .toggle-btn:hover {
+      background-color: rgba(255, 255, 255, 0.1);
+    }
+    
+    /* 面板内容 */
+    .panel-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px;
+      transition: all 0.3s ease;
+    }
+    
+    /* 控制组样式 */
+    .control-group {
+      margin-bottom: 25px;
+    }
+    
+    .control-group:last-child {
+      margin-bottom: 0;
+    }
+    
+    .control-group h3 {
+      font-size: 16px;
+      color: #2c3e50;
+      margin-bottom: 15px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #eaeaea;
+      font-weight: 500;
+    }
+    
+    /* 表单控件 */
+    .form-group {
+      margin-bottom: 15px;
+    }
+    
+    .form-group label {
+      display: block;
+      font-size: 13px;
+      color: #555;
+      margin-bottom: 5px;
+      font-weight: 500;
+    }
+    
+    .form-control {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+      transition: border-color 0.2s;
+    }
+    
+    .form-control:focus {
+      outline: none;
+      border-color: #3498db;
+    }
+    
+    /* 按钮组 */
+    .button-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 10px;
+    }
+    
+    .btn {
+      padding: 10px 16px;
+      border: none;
+      border-radius: 4px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    
+    .btn-primary {
+      background-color: #3498db;
+      color: white;
+    }
+    
+    .btn-primary:hover:not(:disabled) {
+      background-color: #2980b9;
+    }
+    
+    .btn-success {
+      background-color: #2ecc71;
+      color: white;
+    }
+    
+    .btn-success:hover:not(:disabled) {
+      background-color: #27ae60;
+    }
+    
+    .btn-danger {
+      background-color: #e74c3c;
+      color: white;
+    }
+    
+    .btn-danger:hover:not(:disabled) {
+      background-color: #c0392b;
+    }
+    
+    .btn-secondary {
+      background-color: #95a5a6;
+      color: white;
+    }
+    
+    .btn-secondary:hover:not(:disabled) {
+      background-color: #7f8c8d;
+    }
+    
+    .btn:disabled {
+      background-color: #bdc3c7;
+      cursor: not-allowed;
+    }
+    
+    /* 话题监视器容器 */
+    .topic-monitor-container {
+      margin-top: 20px;
+    }
+    
+    .topic-monitor-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 15px;
+    }
+    
+    .topic-selector {
+      flex: 1;
+    }
+    
+    .topic-drawers {
+      margin-top: 15px;
+    }
+    
+    /* 抽屉样式 */
+    .drawer {
+      background-color: #f8f9fa;
+      border: 1px solid #eaeaea;
+      border-radius: 6px;
+      margin-bottom: 10px;
+      overflow: hidden;
+    }
+    
+    .drawer-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 15px;
+      background-color: #f1f2f6;
+      border-bottom: 1px solid #eaeaea;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+    
+    .drawer-header:hover {
+      background-color: #e8e9ed;
+    }
+    
+    .drawer-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      color: #2c3e50;
+    }
+    
+    .drawer-topic {
+      font-family: 'Courier New', monospace;
+      background-color: #e8e9ed;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-size: 12px;
+    }
+    
+    .drawer-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .drawer-toggle, .drawer-remove {
+      background: none;
+      border: none;
+      color: #7f8c8d;
+      cursor: pointer;
+      font-size: 12px;
+      padding: 4px;
+      border-radius: 3px;
+      transition: all 0.2s;
+    }
+    
+    .drawer-toggle:hover, .drawer-remove:hover {
+      background-color: rgba(0, 0, 0, 0.1);
+    }
+    
+    .drawer-content {
+      padding: 15px;
+      display: none;
+    }
+    
+    .drawer-content.expanded {
+      display: block;
+    }
+    
+    .drawer-info {
+      margin-bottom: 15px;
+    }
+    
+    .drawer-info-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #f0f0f0;
+    }
+    
+    .info-label {
+      font-size: 12px;
+      color: #7f8c8d;
+    }
+    
+    .info-value {
+      font-size: 12px;
+      font-weight: 500;
+      color: #2c3e50;
+      font-family: 'Courier New', monospace;
+    }
+    
+    .message-data {
+      background-color: #fff;
+      border: 1px solid #eaeaea;
+      border-radius: 4px;
+      padding: 10px;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    
+    .message-empty {
+      color: #95a5a6;
+      font-style: italic;
+      text-align: center;
+      padding: 20px;
+    }
+    
+    /* 可视化控制开关 */
+    .visualization-control {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 10px;
+      padding: 8px 0;
+      border-top: 1px solid #f0f0f0;
+    }
+    
+    .vis-toggle-label {
+      font-size: 12px;
+      color: #7f8c8d;
+    }
+    
+    .vis-toggle {
+      position: relative;
+      display: inline-block;
+      width: 40px;
+      height: 20px;
+    }
+    
+    .vis-toggle input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    
+    .vis-toggle-slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #ccc;
+      transition: .4s;
+      border-radius: 20px;
+    }
+    
+    .vis-toggle-slider:before {
+      position: absolute;
+      content: "";
+      height: 16px;
+      width: 16px;
+      left: 2px;
+      bottom: 2px;
+      background-color: white;
+      transition: .4s;
+      border-radius: 50%;
+    }
+    
+    input:checked + .vis-toggle-slider {
+      background-color: #2ecc71;
+    }
+    
+    input:checked + .vis-toggle-slider:before {
+      transform: translateX(20px);
+    }
+    
+    /* 地图容器 */
+    .map-container {
+      flex: 1;
+      position: relative;
+      background-color: #ecf0f1;
+      overflow: hidden;
+    }
+    
+    #map {
+      width: 100%;
+      height: 100%;
+    }
+    
+    /* 状态面板 */
+    .status-panel {
+      position: absolute;
+      bottom: 20px;
+      left: 20px;
+      background-color: rgba(255, 255, 255, 0.95);
+      padding: 15px 20px;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      z-index: 100;
+      min-width: 250px;
+    }
+    
+    .status-panel h3 {
+      font-size: 16px;
+      color: #2c3e50;
+      margin-bottom: 10px;
+      font-weight: 500;
+    }
+    
+    .status-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px 15px;
+    }
+    
+    .status-item {
+      display: flex;
+      align-items: center;
+    }
+    
+    .status-label {
+      font-size: 13px;
+      color: #7f8c8d;
+      min-width: 60px;
+    }
+    
+    .status-value {
+      font-size: 13px;
+      font-weight: 500;
+    }
+    
+    .status-connected {
+      color: #27ae60;
+    }
+    
+    .status-disconnected {
+      color: #e74c3c;
+    }
+    
+    /* 图例面板 */
+    .legend-panel {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      background-color: rgba(255, 255, 255, 0.95);
+      padding: 15px 20px;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      z-index: 100;
+      min-width: 200px;
+    }
+    
+    .legend-panel h3 {
+      font-size: 16px;
+      color: #2c3e50;
+      margin-bottom: 10px;
+      font-weight: 500;
+    }
+    
+    .legend-item {
+      display: flex;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    
+    .legend-color {
+      width: 20px;
+      height: 20px;
+      border-radius: 2px;
+      margin-right: 10px;
+    }
+    
+    .legend-label {
+      font-size: 13px;
+      color: #34495e;
+    }
+    
+    /* 日志面板 */
+    .log-panel {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      background-color: rgba(0, 0, 0, 0.85);
+      color: #ecf0f1;
+      padding: 15px;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+      z-index: 100;
+      width: 400px;
+      max-height: 300px;
+      overflow-y: auto;
+      display: none;
+    }
+    
+    .log-panel.visible {
+      display: block;
+    }
+    
+    .log-panel h3 {
+      font-size: 16px;
+      margin-bottom: 10px;
+      color: #ecf0f1;
+      font-weight: 500;
+    }
+    
+    .log-entry {
+      font-size: 12px;
+      font-family: 'Courier New', monospace;
+      margin-bottom: 5px;
+      padding-bottom: 5px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    
+    .log-timestamp {
+      color: #95a5a6;
+      margin-right: 10px;
+    }
+    
+    .log-message {
+      color: #ecf0f1;
+    }
+    
+    /* 操作提示 */
+    .help-panel {
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      background-color: rgba(52, 152, 219, 0.9);
+      color: white;
+      padding: 12px 16px;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+      z-index: 100;
+      max-width: 300px;
+    }
+    
+    .help-panel h3 {
+      font-size: 16px;
+      margin-bottom: 8px;
+      font-weight: 500;
+    }
+    
+    .help-tip {
+      font-size: 13px;
+      margin-bottom: 4px;
+    }
+    
+    /* 快速控制按钮 */
+    .quick-controls {
+      position: absolute;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 10px;
+      z-index: 100;
+    }
+    
+    .quick-btn {
+      padding: 8px 16px;
+      background-color: rgba(255, 255, 255, 0.9);
+      border: none;
+      border-radius: 4px;
+      font-size: 13px;
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      transition: all 0.2s;
+    }
+    
+    .quick-btn:hover {
+      background-color: white;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+    
+    /* 全屏模式 */
+    .fullscreen-btn {
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background-color: rgba(52, 152, 219, 0.9);
+      color: white;
+      border: none;
+      cursor: pointer;
+      font-size: 18px;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .fullscreen-btn:hover {
+      background-color: #3498db;
+    }
+    
+    /* 消息通知 */
+    .notification {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background-color: #2ecc71;
+      color: white;
+      padding: 12px 20px;
+      border-radius: 4px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+      z-index: 10000;
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      min-width: 300px;
+    }
+    
+    .notification.error {
+      background-color: #e74c3c;
+    }
+    
+    .notification.warning {
+      background-color: #f39c12;
+    }
+    
+    .notification.show {
+      display: flex;
+      animation: slideIn 0.3s ease;
+    }
+    
+    @keyframes slideIn {
+      from {
+        transform: translateX(100%);
+        opacity: 0;
+      }
+      to {
+        transform: translateX(0);
+        opacity: 1;
+      }
+    }
+    
+    /* 响应式调整 */
+    @media (max-width: 1200px) {
+      .control-panel:not(.collapsed) {
+        width: 300px;
+      }
+      
+      .log-panel {
+        width: 350px;
+      }
+    }
+    
+    @media (max-width: 768px) {
+      .app-container {
+        flex-direction: column;
+      }
+      
+      .control-panel:not(.collapsed) {
+        width: 100%;
+        height: 300px;
+      }
+      
+      .control-panel.collapsed {
+        width: 100%;
+        height: 60px;
+      }
+      
+      .panel-content {
+        height: calc(100% - 60px);
+      }
+      
+      .legend-panel, .help-panel {
+        display: none;
+      }
+      
+      .status-panel {
+        left: 10px;
+        bottom: 10px;
+        padding: 10px 15px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="app-container">
+    <!-- 左侧控制面板 -->
+    <div class="control-panel" id="controlPanel">
+      <div class="panel-header">
+        <h2>ROS2连接控制</h2>
+        <button class="toggle-btn" id="togglePanelBtn">
+          <span id="toggleIcon">◀</span>
+        </button>
+      </div>
+      
+      <div class="panel-content" id="panelContent">
+        <!-- 话题监视器 -->
+        <div class="control-group topic-monitor-container">
+          <h3>话题监视</h3>
+          <div class="topic-monitor-header">
+            <select id="topicSelector" class="form-control topic-selector">
+              <option value="">选择话题...</option>
+            </select>
+            <button id="refreshTopicsBtn" class="btn btn-secondary" disabled>刷新</button>
+            <button id="addTopicBtn" class="btn btn-primary" disabled>添加</button>
+          </div>
+          
+          <div id="topicDrawers" class="topic-drawers">
+            <!-- 话题抽屉将在这里动态添加 -->
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 地图容器 -->
+    <div class="map-container">
+      <div id="map"></div>
+      
+      <!-- 状态面板 -->
+      <div class="status-panel">
+        <h3>系统状态</h3>
+        <div class="status-grid">
+          <div class="status-item">
+            <span class="status-label">ROS连接:</span>
+            <span id="rosStatus" class="status-value status-disconnected">未连接</span>
+          </div>
+          <div class="status-item">
+            <span class="status-label">话题数量:</span>
+            <span id="topicCount" class="status-value">0</span>
+          </div>
+          <div class="status-item">
+            <span class="status-label">监视器数量:</span>
+            <span id="monitorCount" class="status-value">0</span>
+          </div>
+          <div class="status-item">
+            <span class="status-label">地图状态:</span>
+            <span id="mapStatus" class="status-value">无</span>
+          </div>
+        </div>
+      </div>
+      
+      <!-- 图例面板 -->
+      <div class="legend-panel">
+        <h3>图例说明</h3>
+        <div class="legend-item">
+          <div class="legend-color" style="background-color: #888;"></div>
+          <span class="legend-label">未知区域</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-color" style="background-color: #fff; border: 1px solid #ddd;"></div>
+          <span class="legend-label">空闲区域</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-color" style="background-color: #000;"></div>
+          <span class="legend-label">障碍物</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-color" style="background-color: #f00;"></div>
+          <span class="legend-label">雷达点云</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-color" style="background-color: #0f0; border: 1px solid #ddd;"></div>
+          <span class="legend-label">机器人位置</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-color" style="background-color: #00f;"></div>
+          <span class="legend-label">导航路径</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-color" style="background-color: #ff0;"></div>
+          <span class="legend-label">局部地图</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-color" style="background-color: #f0f;"></div>
+          <span class="legend-label">全局地图</span>
+        </div>
+      </div>
+      
+      <!-- 日志面板 -->
+      <div class="log-panel" id="logPanel">
+        <h3>系统日志</h3>
+        <div id="logContent"></div>
+      </div>
+      
+      <!-- 操作提示 -->
+      <div class="help-panel">
+        <h3>操作提示</h3>
+        <div class="help-tip">• 鼠标左键拖拽地图</div>
+        <div class="help-tip">• 鼠标滚轮缩放地图</div>
+        <div class="help-tip">• 双击重置视图</div>
+        <div class="help-tip">• 快捷键: R=重置, P=面板</div>
+      </div>
+      
+      <!-- 快速控制按钮 -->
+      <div class="quick-controls">
+        <button class="quick-btn" id="toggleLogBtn">显示日志</button>
+        <button class="quick-btn" id="toggleHelpBtn">隐藏提示</button>
+        <button class="quick-btn" id="clearLogBtn">清空日志</button>
+      </div>
+      
+      <!-- 全屏按钮 -->
+      <button class="fullscreen-btn" id="fullscreenBtn">⛶</button>
+    </div>
+    
+    <!-- 消息通知 -->
+    <div class="notification" id="notification"></div>
+  </div>
+
+  <script>
+    class ROS2DMapViewer {
+      constructor() {
+        this.viewer = null;
+        this.ros = null;
+        this.isConnected = false;
+        this.autoConnect = true; // 自动连接标志
+        
+        // 地图信息
+        this.mapInfo = {
+          width: 0,
+          height: 0,
+          resolution: 0.05,
+          origin: { x: 0, y: 0, theta: 0 }
+        };
+        
+        // 话题监视器
+        this.monitoredTopics = new Map(); // topicName -> { subscription, drawerId, data, type, container, visualizationEnabled }
+        this.drawerCounter = 0;
+        
+        // 话题类型缓存
+        this.topicTypes = new Map();
+        
+        // 场景容器
+        this.scene = null;
+        
+        // 容器Z轴层级管理
+        this.containerLayers = {
+          'map': 0,
+          'path': 1,
+          'lidar': 2,
+          'robot': 3
+        };
+        
+        // 当前活动地图（用于坐标转换参考）
+        this.activeMapTopic = null;
+        
+        // 初始化
+        this.init();
+      }
+      
+      init() {
+        this.initViewer();
+        this.initUI();
+        this.initEventListeners();
+        this.logMessage("系统初始化完成", "info");
+        
+        // 自动连接到指定IP的ROS Bridge
+        if (this.autoConnect) {
+          setTimeout(() => {
+            this.logMessage("尝试自动连接到ROS Bridge...", "info");
+            this.connectROS();
+          }, 1000);
+        }
+      }
+      
+      // 初始化地图查看器
+      initViewer() {
+        try {
+          this.viewer = new ROS2D.Viewer({
+            divID: 'map',
+            width: document.querySelector('.map-container').offsetWidth,
+            height: document.querySelector('.map-container').offsetHeight
+          });
+          
+          // 启用鼠标交互
+          this.viewer.scale = 1.0;
+          
+          // 获取场景对象
+          this.scene = this.viewer.scene;
+          
+          this.logMessage("地图查看器初始化成功", "success");
+        } catch (error) {
+          this.logMessage(`地图查看器初始化失败: ${error}`, "error");
+        }
+      }
+      
+      // 初始化UI
+      initUI() {
+        this.updateStatus('rosStatus', '未连接', 'disconnected');
+        this.updateStatus('topicCount', '0');
+        this.updateStatus('monitorCount', '0');
+        this.updateStatus('mapStatus', '无');
+      }
+      
+      // 连接ROS - 直接连接到指定IP
+      connectROS() {
+        const url = "ws://192.168.0.111:9090"; // 固定的IP地址
+        
+        this.logMessage(`正在连接到ROS Bridge: ${url}`, "info");
+        this.updateStatus('rosStatus', '连接中...');
+        
+        this.ros = new ROSLIB.Ros({
+          url: url
+        });
+        
+        this.ros.on('connection', () => {
+          this.isConnected = true;
+          this.updateStatus('rosStatus', '已连接', 'connected');
+          document.getElementById('refreshTopicsBtn').disabled = false;
+          document.getElementById('addTopicBtn').disabled = false;
+          
+          this.showNotification("成功连接到ROS", "success");
+          this.logMessage("ROS连接成功", "success");
+          
+          // 连接成功后刷新话题列表
+          setTimeout(() => {
+            this.refreshTopicList();
+          }, 500);
+        });
+        
+        this.ros.on('error', (error) => {
+          this.logMessage(`连接错误: ${error}`, "error");
+          this.updateStatus('rosStatus', '连接失败', 'disconnected');
+          this.showNotification("连接失败，请检查ROS Bridge是否运行", "error");
+        });
+        
+        this.ros.on('close', () => {
+          this.isConnected = false;
+          this.updateStatus('rosStatus', '未连接', 'disconnected');
+          document.getElementById('refreshTopicsBtn').disabled = true;
+          document.getElementById('addTopicBtn').disabled = true;
+          
+          // 清空话题列表
+          this.clearTopicList();
+          
+          // 移除所有话题监视器
+          this.removeAllMonitoredTopics();
+          
+          this.logMessage("ROS连接已关闭", "warning");
+        });
+      }
+      
+      // 断开ROS连接
+      disconnectROS() {
+        if (this.ros) {
+          this.removeAllMonitoredTopics();
+          this.ros.close();
+          this.ros = null;
+        }
+      }
+      
+      // 刷新话题列表 - 使用ros.getTopics()方法
+      refreshTopicList() {
+        if (!this.isConnected || !this.ros) {
+          this.showNotification("未连接到ROS", "warning");
+          return;
+        }
+        
+        this.logMessage("获取话题列表中...", "info");
+        
+        // 使用ros.getTopics()方法获取话题列表
+        this.ros.getTopics(
+          (result) => {
+            // 成功回调
+            if (result && result.topics && result.types) {
+              // 处理获取到的话题列表
+              const topics = result.topics.map((name, index) => ({
+                name,
+                type: result.types[index] || '未知类型'
+              }));
+              
+              this.updateTopicSelector(topics);
+              this.showNotification(`发现 ${topics.length} 个话题`, "success");
+            } else {
+              this.logMessage("获取的话题列表格式不正确", "warning");
+              this.showNotification("获取话题列表失败，尝试回退到常见话题", "warning");
+              this.fallbackToCommonTopics();
+            }
+          },
+          (error) => {
+            // 错误回调
+            this.logMessage(`获取话题列表失败: ${error}`, "error");
+            this.showNotification("获取话题列表失败，尝试回退到常见话题", "warning");
+            
+            // 回退到常见话题列表
+            this.fallbackToCommonTopics();
+          }
+        );
+      }
+      
+      // 回退到常见话题列表
+      fallbackToCommonTopics() {
+        const commonTopics = [
+          '/map',
+          '/scan',
+          '/odom',
+          '/amcl_pose',
+          '/move_base_simple/goal',
+          '/initialpose',
+          '/cmd_vel',
+          '/global_plan',
+          '/local_plan',
+          '/path',
+          '/rosout',
+          '/tf',
+          '/tf_static',
+          '/diagnostics',
+          '/global_costmap/costmap',
+          '/local_costmap/costmap'
+        ];
+        
+        this.updateTopicSelector(commonTopics);
+      }
+      
+      // 更新话题选择器
+      updateTopicSelector(topics) {
+        const topicSelector = document.getElementById('topicSelector');
+        topicSelector.innerHTML = '<option value="">选择话题...</option>';
+        
+        if (topics && topics.length > 0) {
+          // 按话题名称排序
+          const sortedTopics = topics.sort((a, b) => {
+            if (typeof a === 'string') {
+              return a.localeCompare(b);
+            } else if (a.name) {
+              return a.name.localeCompare(b.name);
+            }
+            return 0;
+          });
+          
+          // 添加到下拉列表
+          sortedTopics.forEach((topic) => {
+            let topicName, topicType;
+            
+            if (typeof topic === 'string') {
+              topicName = topic;
+              topicType = this.topicTypes.get(topic) || '未知类型';
+            } else {
+              topicName = topic.name;
+              topicType = topic.type || this.topicTypes.get(topicName) || '未知类型';
+              // 更新话题类型缓存
+              this.topicTypes.set(topicName, topicType);
+            }
+            
+            const option = document.createElement('option');
+            option.value = topicName;
+            option.textContent = `${topicName} (${topicType})`;
+            option.dataset.type = topicType;
+            topicSelector.appendChild(option);
+          });
+          
+          this.updateStatus('topicCount', topics.length.toString());
+          this.logMessage(`发现 ${topics.length} 个话题`, "success");
+        } else {
+          this.logMessage("未找到可用话题", "warning");
+          this.showNotification("未找到可用话题", "warning");
+        }
+      }
+      
+      // 清空话题列表
+      clearTopicList() {
+        const topicSelector = document.getElementById('topicSelector');
+        topicSelector.innerHTML = '<option value="">选择话题...</option>';
+        this.updateStatus('topicCount', '0');
+        this.topicTypes.clear();
+      }
+      
+      // 添加话题监视器
+      addTopicMonitor() {
+        const topicSelector = document.getElementById('topicSelector');
+        const selectedTopic = topicSelector.value;
+        
+        if (!selectedTopic) {
+          this.showNotification("请选择一个话题", "warning");
+          return;
+        }
+        
+        if (this.monitoredTopics.has(selectedTopic)) {
+          this.showNotification("该话题已在监视列表中", "warning");
+          return;
+        }
+        
+        const selectedOption = topicSelector.options[topicSelector.selectedIndex];
+        let topicType = selectedOption.dataset.type;
+        
+        // 如果类型是"未知类型"，尝试获取真实类型
+        if (!topicType || topicType === '未知类型') {
+          this.getTopicType(selectedTopic).then(type => {
+            if (type && type !== '未知类型') {
+              this.topicTypes.set(selectedTopic, type);
+              this.createTopicMonitor(selectedTopic, type);
+            } else {
+              // 如果无法获取类型，使用默认类型尝试
+              this.createTopicMonitor(selectedTopic, this.guessTopicType(selectedTopic));
+            }
+          }).catch(() => {
+            // 如果获取类型失败，使用猜测的类型
+            this.createTopicMonitor(selectedTopic, this.guessTopicType(selectedTopic));
+          });
+        } else {
+          this.createTopicMonitor(selectedTopic, topicType);
+        }
+      }
+      
+      // 获取话题类型
+      getTopicType(topicName) {
+        return new Promise((resolve, reject) => {
+          // 尝试通过 getTopicType 方法获取话题类型
+          const getTopicTypeClient = new ROSLIB.Service({
+            ros: this.ros,
+            name: '/rosapi/get_topic_type',
+            serviceType: 'rosapi/GetTopicType'
+          });
+          
+          const request = new ROSLIB.ServiceRequest({
+            topic: topicName
+          });
+          
+          getTopicTypeClient.callService(request, (response) => {
+            if (response && response.type) {
+              resolve(response.type);
+            } else {
+              reject(new Error('No type returned'));
+            }
+          }, (error) => {
+            // 如果服务不存在，使用猜测的类型
+            const guessedType = this.guessTopicType(topicName);
+            resolve(guessedType);
+          });
+        });
+      }
+      
+      // 创建话题监视器
+      createTopicMonitor(topicName, topicType) {
+        this.logMessage(`开始监视话题: ${topicName} (类型: ${topicType})`, "info");
+        
+        // 创建话题订阅
+        const subscription = new ROSLIB.Topic({
+          ros: this.ros,
+          name: topicName,
+          messageType: topicType
+        });
+        
+        const drawerId = `drawer-${++this.drawerCounter}`;
+        
+        // 判断是否需要可视化
+        const shouldVisualize = this.shouldVisualizeTopic(topicName, topicType);
+        
+        // 创建抽屉UI
+        this.createTopicDrawer(topicName, topicType, drawerId, shouldVisualize);
+        
+        // 如果需要可视化，创建容器
+        let container = null;
+        if (shouldVisualize) {
+          container = this.createVisualizationContainer(topicName, topicType);
+        }
+        
+        // 订阅话题
+        const startTime = Date.now();
+        let messageCount = 0;
+        let lastMessageTime = startTime;
+        
+        subscription.subscribe((message) => {
+          messageCount++;
+          const currentTime = Date.now();
+          const timeSinceLastMessage = currentTime - lastMessageTime;
+          lastMessageTime = currentTime;
+          
+          // 更新抽屉内容
+          this.updateTopicDrawer(drawerId, topicName, message, messageCount, startTime, timeSinceLastMessage);
+          
+          // 如果启用了可视化，处理消息用于可视化
+          const monitor = this.monitoredTopics.get(topicName);
+          if (monitor && monitor.visualizationEnabled && container) {
+            this.processMessageForVisualization(topicName, topicType, message, container);
+          }
+        });
+        
+        // 保存订阅信息
+        this.monitoredTopics.set(topicName, {
+          subscription: subscription,
+          drawerId: drawerId,
+          messageCount: 0,
+          startTime: startTime,
+          lastMessage: null,
+          topicType: topicType,
+          container: container,
+          visualizationEnabled: shouldVisualize
+        });
+        
+        // 更新监视器数量
+        this.updateStatus('monitorCount', this.monitoredTopics.size.toString());
+        
+        this.showNotification(`已开始监视话题: ${topicName}`, "success");
+      }
+      
+      // 判断话题是否需要可视化
+      shouldVisualizeTopic(topicName, topicType) {
+        // 只对特定类型的话题进行可视化
+        if (topicType === 'nav_msgs/msg/OccupancyGrid' || topicName.includes('map') || topicName.includes('costmap')) {
+          return true;
+        } else if (topicType === 'sensor_msgs/msg/LaserScan' || topicName.includes('scan')) {
+          return true;
+        } else if (topicType === 'nav_msgs/msg/Path' || topicName.includes('path') || topicName.includes('plan')) {
+          return true;
+        } else if (topicType === 'geometry_msgs/msg/PoseWithCovarianceStamped' || 
+                  topicType === 'geometry_msgs/msg/PoseStamped' || 
+                  topicName.includes('pose') || 
+                  topicName.includes('odom')) {
+          return true;
+        }
+        return false;
+      }
+      
+      // 创建可视化容器
+      createVisualizationContainer(topicName, topicType) {
+        const container = new createjs.Container();
+        
+        // 设置容器层级
+        let layer = 0;
+        if (topicType === 'nav_msgs/msg/OccupancyGrid' || topicName.includes('map') || topicName.includes('costmap')) {
+          layer = this.containerLayers.map;
+        } else if (topicType === 'sensor_msgs/msg/LaserScan' || topicName.includes('scan')) {
+          layer = this.containerLayers.lidar;
+        } else if (topicType === 'nav_msgs/msg/Path' || topicName.includes('path') || topicName.includes('plan')) {
+          layer = this.containerLayers.path;
+        } else if (topicType === 'geometry_msgs/msg/PoseWithCovarianceStamped' || 
+                  topicType === 'geometry_msgs/msg/PoseStamped' || 
+                  topicName.includes('pose') || 
+                  topicName.includes('odom')) {
+          layer = this.containerLayers.robot;
+        }
+        
+        container.layer = layer;
+        container.name = topicName;
+        
+        // 将容器添加到场景
+        this.scene.addChild(container);
+        
+        // 重新排序容器以确保正确的Z轴顺序
+        this.sortContainersByLayer();
+        
+        return container;
+      }
+      
+      // 按层级排序容器
+      sortContainersByLayer() {
+        // 收集所有容器
+        const containers = [];
+        for (let i = 0; i < this.scene.children.length; i++) {
+          const child = this.scene.children[i];
+          if (child.layer !== undefined) {
+            containers.push(child);
+          }
+        }
+        
+        // 按层级排序
+        containers.sort((a, b) => a.layer - b.layer);
+        
+        // 重新添加到场景
+        containers.forEach((container, index) => {
+          this.scene.setChildIndex(container, index);
+        });
+      }
+      
+      // 切换话题可视化
+      toggleTopicVisualization(topicName) {
+        const monitor = this.monitoredTopics.get(topicName);
+        if (monitor) {
+          monitor.visualizationEnabled = !monitor.visualizationEnabled;
+          
+          if (monitor.container) {
+            monitor.container.visible = monitor.visualizationEnabled;
+          }
+          
+          this.logMessage(`${monitor.visualizationEnabled ? '启用' : '禁用'}话题 ${topicName} 的可视化`, "info");
+          return monitor.visualizationEnabled;
+        }
+        return false;
+      }
+      
+      // 猜测话题类型
+      guessTopicType(topicName) {
+        // 根据话题名称猜测类型
+        if (topicName.includes('map') || topicName.includes('costmap')) {
+          return 'nav_msgs/msg/OccupancyGrid';
+        } else if (topicName.includes('scan')) {
+          return 'sensor_msgs/msg/LaserScan';
+        } else if (topicName.includes('pose') || topicName.includes('odom')) {
+          return 'geometry_msgs/msg/PoseWithCovarianceStamped';
+        } else if (topicName.includes('path') || topicName.includes('plan')) {
+          return 'nav_msgs/msg/Path';
+        } else if (topicName.includes('cmd_vel')) {
+          return 'geometry_msgs/msg/Twist';
+        } else if (topicName.includes('goal') || topicName.includes('initialpose')) {
+          return 'geometry_msgs/msg/PoseStamped';
+        } else if (topicName.includes('tf')) {
+          return 'tf2_msgs/msg/TFMessage';
+        } else if (topicName.includes('diagnostics')) {
+          return 'diagnostic_msgs/msg/DiagnosticArray';
+        } else if (topicName.includes('rosout')) {
+          return 'rcl_interfaces/msg/Log';
+        } else {
+          return 'std_msgs/msg/String'; // 默认类型
+        }
+      }
+      
+      // 处理消息用于可视化
+      processMessageForVisualization(topicName, topicType, message, container) {
+        // 清除容器中的旧内容
+        container.removeAllChildren();
+        
+        // 处理地图话题
+        if (topicType === 'nav_msgs/msg/OccupancyGrid' || topicName.includes('map') || topicName.includes('costmap')) {
+          this.processMapMessage(message, container, topicName);
+        }
+        // 处理雷达话题
+        else if (topicType === 'sensor_msgs/msg/LaserScan' || topicName.includes('scan')) {
+          this.processLidarMessage(message, container, topicName);
+        }
+        // 处理路径话题
+        else if (topicType === 'nav_msgs/msg/Path' || topicName.includes('path') || topicName.includes('plan')) {
+          this.processPathMessage(message, container, topicName);
+        }
+        // 处理位姿话题
+        else if (topicType === 'geometry_msgs/msg/PoseWithCovarianceStamped' || 
+                topicType === 'geometry_msgs/msg/PoseStamped' || 
+                topicName.includes('pose') || 
+                topicName.includes('odom')) {
+          this.processPoseMessage(message, container, topicName);
+        }
+        // 其他类型的话题不进行可视化
+      }
+      
+      // 处理地图消息
+      processMapMessage(mapMsg, container, topicName) {
+        // 保存地图信息
+        this.mapInfo = {
+          width: mapMsg.info.width,
+          height: mapMsg.info.height,
+          resolution: mapMsg.info.resolution,
+          origin: {
+            x: mapMsg.info.origin.position.x,
+            y: mapMsg.info.origin.position.y,
+            theta: 0
+          }
+        };
+        
+        // 设置当前活动地图
+        this.activeMapTopic = topicName;
+        this.updateStatus('mapStatus', '已加载');
+        this.logMessage(`地图加载: ${this.mapInfo.width}x${this.mapInfo.height}, 分辨率: ${this.mapInfo.resolution}`, "success");
+        
+        // 创建地图显示
+        const mapImage = new ROS2D.OccupancyGrid({
+          ros: this.ros,
+          rootObject: container,
+          continuous: false
+        });
+        
+        // 手动触发地图显示
+        mapImage.grid = mapMsg;
+        mapImage.update();
+        
+        // 调整视图以适应地图
+        this.viewer.scaleToDimensions(this.mapInfo.width, this.mapInfo.height);
+        this.viewer.shift(this.mapInfo.origin.x, this.mapInfo.origin.y);
+        
+        this.showNotification("地图加载成功", "success");
+      }
+      
+      // 处理雷达消息
+      processLidarMessage(scanMsg, container, topicName) {
+        if (!scanMsg.ranges || scanMsg.ranges.length === 0) return;
+        
+        const ranges = scanMsg.ranges;
+        const angleMin = scanMsg.angle_min;
+        const angleIncrement = scanMsg.angle_increment;
+        
+        // 创建雷达点图形
+        const points = new createjs.Shape();
+        const g = points.graphics;
+        
+        // 根据话题名称设置颜色
+        let color = createjs.Graphics.getRGB(255, 0, 0, 0.7); // 默认红色
+        if (topicName.includes('front')) {
+          color = createjs.Graphics.getRGB(255, 0, 0, 0.7); // 前雷达用红色
+        } else if (topicName.includes('rear') || topicName.includes('back')) {
+          color = createjs.Graphics.getRGB(255, 165, 0, 0.7); // 后雷达用橙色
+        } else if (topicName.includes('side')) {
+          color = createjs.Graphics.getRGB(255, 255, 0, 0.7); // 侧雷达用黄色
+        }
+        
+        g.beginFill(color);
+        
+        // 计算每个雷达点在地图坐标系中的位置
+        for (let i = 0; i < ranges.length; i++) {
+          const range = ranges[i];
+          
+          // 跳过无效点
+          if (!isFinite(range) || range <= 0 || range > scanMsg.range_max) {
+            continue;
+          }
+          
+          const angle = angleMin + i * angleIncrement;
+          
+          // 转换到像素坐标
+          const pixelsPerMeter = 1 / this.mapInfo.resolution;
+          const localX = Math.cos(angle) * range * pixelsPerMeter;
+          const localY = Math.sin(angle) * range * pixelsPerMeter;
+          
+          // 考虑地图原点偏移
+          const finalX = localX - (this.mapInfo.origin.x * pixelsPerMeter);
+          const finalY = localY - (this.mapInfo.origin.y * pixelsPerMeter);
+          
+          // 绘制点
+          g.drawCircle(finalX, finalY, 2);
+        }
+        
+        g.endFill();
+        container.addChild(points);
+      }
+      
+      // 处理路径消息
+      processPathMessage(pathMsg, container, topicName) {
+        if (!pathMsg.poses || pathMsg.poses.length === 0) return;
+        
+        // 创建路径图形
+        const path = new createjs.Shape();
+        const g = path.graphics;
+        
+        // 根据话题名称设置颜色
+        let color = createjs.Graphics.getRGB(0, 0, 255, 0.8); // 默认蓝色
+        if (topicName.includes('global') || topicName.includes('global_plan')) {
+          color = createjs.Graphics.getRGB(0, 0, 255, 0.8); // 全局路径用蓝色
+        } else if (topicName.includes('local') || topicName.includes('local_plan')) {
+          color = createjs.Graphics.getRGB(0, 255, 255, 0.8); // 局部路径用青色
+        }
+        
+        g.setStrokeStyle(2)
+         .beginStroke(color)
+         .moveTo(0, 0);
+        
+        const pixelsPerMeter = 1 / this.mapInfo.resolution;
+        
+        // 绘制路径点
+        pathMsg.poses.forEach((pose, index) => {
+          const x = pose.pose.position.x * pixelsPerMeter - (this.mapInfo.origin.x * pixelsPerMeter);
+          const y = pose.pose.position.y * pixelsPerMeter - (this.mapInfo.origin.y * pixelsPerMeter);
+          
+          if (index === 0) {
+            g.moveTo(x, y);
+          } else {
+            g.lineTo(x, y);
+          }
+          
+          // 在路径点上绘制小圆点
+          if (index % 5 === 0) {
+            const dot = new createjs.Shape();
+            dot.graphics.beginFill(color).drawCircle(x, y, 3);
+            container.addChild(dot);
+          }
+        });
+        
+        g.endStroke();
+        container.addChild(path);
+      }
+      
+      // 处理位姿消息
+      processPoseMessage(poseMsg, container, topicName) {
+        let pose;
+        if (poseMsg.pose && poseMsg.pose.pose) {
+          pose = poseMsg.pose.pose; // PoseWithCovarianceStamped
+        } else if (poseMsg.pose) {
+          pose = poseMsg.pose; // PoseStamped
+        } else {
+          return;
+        }
+        
+        // 转换到像素坐标
+        const pixelsPerMeter = 1 / this.mapInfo.resolution;
+        const robotX = pose.position.x * pixelsPerMeter - (this.mapInfo.origin.x * pixelsPerMeter);
+        const robotY = pose.position.y * pixelsPerMeter - (this.mapInfo.origin.y * pixelsPerMeter);
+        
+        // 从四元数计算偏航角
+        const q = pose.orientation;
+        const theta = Math.atan2(2 * (q.w * q.z + q.x * q.y), 1 - 2 * (q.y * q.y + q.z * q.z));
+        
+        // 根据话题名称设置颜色
+        let color = "#00FF00"; // 默认绿色
+        if (topicName.includes('amcl')) {
+          color = "#00FF00"; // AMCL位姿用绿色
+        } else if (topicName.includes('odom')) {
+          color = "#FF00FF"; // 里程计位姿用紫色
+        } else if (topicName.includes('ground_truth')) {
+          color = "#FFFF00"; // 真实位姿用黄色
+        }
+        
+        // 创建机器人标记
+        const robot = new createjs.Shape();
+        robot.graphics
+          .setStrokeStyle(2)
+          .beginStroke(color)
+          .drawCircle(robotX, robotY, 10)
+          .moveTo(robotX, robotY)
+          .lineTo(robotX + Math.cos(theta) * 20, robotY + Math.sin(theta) * 20);
+        
+        // 添加话题名称标签
+        const label = new createjs.Text(this.getShortTopicName(topicName), "12px Arial", "#000");
+        label.x = robotX + 15;
+        label.y = robotY - 15;
+        label.textBaseline = "alphabetic";
+        
+        container.addChild(robot);
+        container.addChild(label);
+      }
+      
+      // 获取简短的话题名称
+      getShortTopicName(topicName) {
+        const parts = topicName.split('/');
+        return parts[parts.length - 1] || topicName;
+      }
+      
+      // 创建话题抽屉
+      createTopicDrawer(topicName, topicType, drawerId, shouldVisualize) {
+        const topicDrawers = document.getElementById('topicDrawers');
+        
+        const drawer = document.createElement('div');
+        drawer.className = 'drawer';
+        drawer.id = drawerId;
+        
+        let visualizationControl = '';
+        if (shouldVisualize) {
+          visualizationControl = `
+            <div class="visualization-control">
+              <span class="vis-toggle-label">可视化显示</span>
+              <label class="vis-toggle">
+                <input type="checkbox" checked data-topic="${topicName}">
+                <span class="vis-toggle-slider"></span>
+              </label>
+            </div>
+          `;
+        }
+        
+        drawer.innerHTML = `
+          <div class="drawer-header">
+            <div class="drawer-title">
+              <span>📡</span>
+              <span>话题监视</span>
+              <span class="drawer-topic">${this.truncateText(topicName, 30)}</span>
+            </div>
+            <div class="drawer-controls">
+              <button class="drawer-toggle" data-drawer="${drawerId}">展开</button>
+              <button class="drawer-remove" data-drawer="${drawerId}">×</button>
+            </div>
+          </div>
+          <div class="drawer-content" id="${drawerId}-content">
+            <div class="drawer-info">
+              <div class="drawer-info-item">
+                <span class="info-label">话题名称:</span>
+                <span class="info-value" id="${drawerId}-name">${topicName}</span>
+              </div>
+              <div class="drawer-info-item">
+                <span class="info-label">消息类型:</span>
+                <span class="info-value" id="${drawerId}-type">${topicType}</span>
+              </div>
+              <div class="drawer-info-item">
+                <span class="info-label">消息频率:</span>
+                <span class="info-value" id="${drawerId}-frequency">0 Hz</span>
+              </div>
+              <div class="drawer-info-item">
+                <span class="info-label">消息数量:</span>
+                <span class="info-value" id="${drawerId}-count">0</span>
+              </div>
+              <div class="drawer-info-item">
+                <span class="info-label">最后间隔:</span>
+                <span class="info-value" id="${drawerId}-interval">0 ms</span>
+              </div>
+            </div>
+            ${visualizationControl}
+            <div class="message-data" id="${drawerId}-data">
+              <div class="message-empty">等待消息...</div>
+            </div>
+          </div>
+        `;
+        
+        // 添加到顶部
+        topicDrawers.insertBefore(drawer, topicDrawers.firstChild);
+        
+        // 添加事件监听器
+        const toggleBtn = drawer.querySelector('.drawer-toggle');
+        const removeBtn = drawer.querySelector('.drawer-remove');
+        
+        toggleBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this.toggleDrawer(drawerId);
+        });
+        
+        removeBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this.removeTopicMonitor(topicName);
+        });
+        
+        // 点击头部也可以切换
+        const drawerHeader = drawer.querySelector('.drawer-header');
+        drawerHeader.addEventListener('click', (e) => {
+          if (e.target !== toggleBtn && e.target !== removeBtn) {
+            this.toggleDrawer(drawerId);
+          }
+        });
+        
+        // 添加可视化切换监听
+        if (shouldVisualize) {
+          const visToggle = drawer.querySelector('.vis-toggle input');
+          visToggle.addEventListener('change', (e) => {
+            const enabled = this.toggleTopicVisualization(topicName);
+            e.target.checked = enabled;
+          });
+        }
+      }
+      
+      // 更新话题抽屉
+      updateTopicDrawer(drawerId, topicName, message, messageCount, startTime, timeSinceLastMessage) {
+        const drawer = this.monitoredTopics.get(topicName);
+        if (!drawer) return;
+        
+        drawer.messageCount = messageCount;
+        drawer.lastMessage = message;
+        
+        // 计算消息频率
+        const elapsedTime = (Date.now() - startTime) / 1000; // 秒
+        const frequency = elapsedTime > 0 ? (messageCount / elapsedTime).toFixed(2) : "0";
+        
+        // 更新UI
+        const frequencyElement = document.getElementById(`${drawerId}-frequency`);
+        const countElement = document.getElementById(`${drawerId}-count`);
+        const intervalElement = document.getElementById(`${drawerId}-interval`);
+        const dataElement = document.getElementById(`${drawerId}-data`);
+        
+        if (frequencyElement) frequencyElement.textContent = `${frequency} Hz`;
+        if (countElement) countElement.textContent = messageCount;
+        if (intervalElement && timeSinceLastMessage) {
+          intervalElement.textContent = `${timeSinceLastMessage} ms`;
+        }
+        
+        // 显示消息内容摘要
+        if (dataElement) {
+          let messageContent = '';
+          try {
+            // 创建消息摘要
+            const messageSummary = this.createMessageSummary(message, drawer.topicType);
+            messageContent = JSON.stringify(messageSummary, null, 2);
+          } catch (e) {
+            messageContent = '无法解析消息内容';
+          }
+          
+          dataElement.innerHTML = `<pre style="margin: 0; font-size: 11px; white-space: pre-wrap; word-wrap: break-word;">${this.escapeHtml(messageContent)}</pre>`;
+        }
+        
+        // 更新抽屉中的活跃状态指示器
+        const drawerElement = document.getElementById(drawerId);
+        if (drawerElement) {
+          const titleElement = drawerElement.querySelector('.drawer-title span:first-child');
+          if (titleElement) {
+            titleElement.textContent = '🔴'; // 活跃状态
+            // 1秒后恢复
+            setTimeout(() => {
+              if (titleElement && this.monitoredTopics.has(topicName)) {
+                titleElement.textContent = '📡';
+              }
+            }, 1000);
+          }
+        }
+      }
+      
+      // 创建消息摘要
+      createMessageSummary(message, topicType) {
+        const summary = {
+          timestamp: new Date().toISOString(),
+          type: topicType
+        };
+        
+        // 根据消息类型创建不同的摘要
+        if (topicType === 'nav_msgs/msg/OccupancyGrid') {
+          summary.width = message.info.width;
+          summary.height = message.info.height;
+          summary.resolution = message.info.resolution;
+          summary.data_length = message.data.length;
+        } else if (topicType === 'sensor_msgs/msg/LaserScan') {
+          summary.ranges_length = message.ranges.length;
+          summary.angle_min = message.angle_min;
+          summary.angle_max = message.angle_max;
+          summary.range_min = message.range_min;
+          summary.range_max = message.range_max;
+        } else if (topicType === 'nav_msgs/msg/Path') {
+          summary.poses_length = message.poses.length;
+          summary.frame_id = message.header.frame_id;
+        } else if (topicType === 'geometry_msgs/msg/PoseWithCovarianceStamped' || 
+                  topicType === 'geometry_msgs/msg/PoseStamped') {
+          summary.position = {
+            x: (message.pose && message.pose.pose) ? message.pose.pose.position.x : 
+               (message.pose ? message.pose.position.x : 0),
+            y: (message.pose && message.pose.pose) ? message.pose.pose.position.y : 
+               (message.pose ? message.pose.position.y : 0),
+            z: (message.pose && message.pose.pose) ? message.pose.pose.position.z : 
+               (message.pose ? message.pose.position.z : 0)
+          };
+          summary.frame_id = message.header.frame_id;
+        } else {
+          // 对于其他类型，只显示前5个属性
+          const keys = Object.keys(message).slice(0, 5);
+          keys.forEach(key => {
+            if (typeof message[key] === 'object') {
+              summary[key] = 'object';
+            } else {
+              summary[key] = message[key];
+            }
+          });
+        }
+        
+        return summary;
+      }
+      
+      // 切换抽屉展开/收起
+      toggleDrawer(drawerId) {
+        const content = document.getElementById(`${drawerId}-content`);
+        const toggleBtn = document.querySelector(`[data-drawer="${drawerId}"].drawer-toggle`);
+        
+        if (content && toggleBtn) {
+          content.classList.toggle('expanded');
+          toggleBtn.textContent = content.classList.contains('expanded') ? '收起' : '展开';
+        }
+      }
+      
+      // 移除话题监视器
+      removeTopicMonitor(topicName) {
+        const monitor = this.monitoredTopics.get(topicName);
+        if (monitor) {
+          // 取消订阅
+          if (monitor.subscription) {
+            monitor.subscription.unsubscribe();
+          }
+          
+          // 移除可视化容器
+          if (monitor.container) {
+            this.scene.removeChild(monitor.container);
+          }
+          
+          // 移除UI
+          const drawerElement = document.getElementById(monitor.drawerId);
+          if (drawerElement) {
+            drawerElement.remove();
+          }
+          
+          // 从映射中移除
+          this.monitoredTopics.delete(topicName);
+          
+          // 更新监视器数量
+          this.updateStatus('monitorCount', this.monitoredTopics.size.toString());
+          
+          this.logMessage(`已停止监视话题: ${topicName}`, "info");
+          this.showNotification(`已停止监视话题: ${topicName}`, "info");
+        }
+      }
+      
+      // 移除所有话题监视器
+      removeAllMonitoredTopics() {
+        for (const [topicName] of this.monitoredTopics) {
+          this.removeTopicMonitor(topicName);
+        }
+        this.monitoredTopics.clear();
+        this.updateStatus('monitorCount', '0');
+      }
+      
+      // 重置视图
+      resetView() {
+        if (this.mapInfo.width > 0 && this.mapInfo.height > 0) {
+          this.viewer.scaleToDimensions(this.mapInfo.width, this.mapInfo.height);
+          this.viewer.shift(this.mapInfo.origin.x, this.mapInfo.origin.y);
+          this.logMessage("视图已重置", "info");
+        } else {
+          this.showNotification("没有地图数据，无法重置视图", "warning");
+        }
+      }
+      
+      // 截断文本
+      truncateText(text, maxLength) {
+        if (text.length <= maxLength) return text;
+        return text.substring(0, maxLength) + '...';
+      }
+      
+      // HTML转义
+      escapeHtml(text) {
+        const map = {
+          '&': '&amp;',
+          '<': '&lt;',
+          '>': '&gt;',
+          '"': '&quot;',
+          "'": '&#039;'
+        };
+        return text.replace(/[&<>"']/g, m => map[m]);
+      }
+      
+      // 更新状态显示
+      updateStatus(elementId, text, className = '') {
+        const element = document.getElementById(elementId);
+        if (element) {
+          element.textContent = text;
+          element.className = 'status-value ' + className;
+        }
+      }
+      
+      // 日志消息
+      logMessage(message, type = "info") {
+        const logContent = document.getElementById('logContent');
+        const timestamp = new Date().toLocaleTimeString();
+        const entry = document.createElement('div');
+        entry.className = 'log-entry';
+        entry.innerHTML = `
+          <span class="log-timestamp">[${timestamp}]</span>
+          <span class="log-message">${message}</span>
+        `;
+        
+        // 根据消息类型设置颜色
+        if (type === "error") {
+          entry.style.color = "#e74c3c";
+        } else if (type === "success") {
+          entry.style.color = "#2ecc71";
+        } else if (type === "warning") {
+          entry.style.color = "#f39c12";
+        }
+        
+        logContent.insertBefore(entry, logContent.firstChild);
+        
+        // 限制日志数量
+        while (logContent.children.length > 50) {
+          logContent.removeChild(logContent.lastChild);
+        }
+      }
+      
+      // 显示通知
+      showNotification(message, type = "info") {
+        const notification = document.getElementById('notification');
+        notification.textContent = message;
+        notification.className = 'notification';
+        
+        if (type === "error") {
+          notification.classList.add('error');
+        } else if (type === "warning") {
+          notification.classList.add('warning');
+        }
+        
+        notification.classList.add('show');
+        
+        // 3秒后自动隐藏
+        setTimeout(() => {
+          notification.classList.remove('show');
+        }, 3000);
+      }
+      
+      // 初始化事件监听器
+      initEventListeners() {
+        // 话题监视器按钮
+        document.getElementById('refreshTopicsBtn').addEventListener('click', () => {
+          this.refreshTopicList();
+        });
+        
+        document.getElementById('addTopicBtn').addEventListener('click', () => {
+          this.addTopicMonitor();
+        });
+        
+        // 控制面板收起/展开
+        document.getElementById('togglePanelBtn').addEventListener('click', () => {
+          const controlPanel = document.getElementById('controlPanel');
+          const toggleIcon = document.getElementById('toggleIcon');
+          
+          controlPanel.classList.toggle('collapsed');
+          
+          if (controlPanel.classList.contains('collapsed')) {
+            toggleIcon.textContent = '▶';
+            this.logMessage("控制面板已收起", "info");
+          } else {
+            toggleIcon.textContent = '◀';
+            this.logMessage("控制面板已展开", "info");
+          }
+          
+          // 调整地图大小
+          setTimeout(() => {
+            if (this.viewer) {
+              this.viewer.width = document.querySelector('.map-container').offsetWidth;
+              this.viewer.height = document.querySelector('.map-container').offsetHeight;
+              this.viewer.stage.canvas.width = this.viewer.width;
+              this.viewer.stage.canvas.height = this.viewer.height;
+            }
+          }, 300);
+        });
+        
+        // 日志面板控制
+        document.getElementById('toggleLogBtn').addEventListener('click', () => {
+          const logPanel = document.getElementById('logPanel');
+          const toggleBtn = document.getElementById('toggleLogBtn');
+          
+          logPanel.classList.toggle('visible');
+          
+          if (logPanel.classList.contains('visible')) {
+            toggleBtn.textContent = '隐藏日志';
+            this.logMessage("日志面板已显示", "info");
+          } else {
+            toggleBtn.textContent = '显示日志';
+            this.logMessage("日志面板已隐藏", "info");
+          }
+        });
+        
+        // 清空日志
+        document.getElementById('clearLogBtn').addEventListener('click', () => {
+          document.getElementById('logContent').innerHTML = '';
+          this.logMessage("日志已清空", "info");
+        });
+        
+        // 全屏模式
+        document.getElementById('fullscreenBtn').addEventListener('click', () => {
+          if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen().catch(err => {
+              this.logMessage(`全屏模式失败: ${err.message}`, "error");
+            });
+          } else {
+            if (document.exitFullscreen) {
+              document.exitFullscreen();
+            }
+          }
+        });
+        
+        // 帮助面板控制
+        let helpVisible = true;
+        document.getElementById('toggleHelpBtn').addEventListener('click', () => {
+          const helpPanel = document.querySelector('.help-panel');
+          const toggleBtn = document.getElementById('toggleHelpBtn');
+          
+          if (helpVisible) {
+            helpPanel.style.display = 'none';
+            toggleBtn.textContent = '显示提示';
+            this.logMessage("操作提示已隐藏", "info");
+          } else {
+            helpPanel.style.display = 'block';
+            toggleBtn.textContent = '隐藏提示';
+            this.logMessage("操作提示已显示", "info");
+          }
+          
+          helpVisible = !helpVisible;
+        });
+        
+        // 窗口大小变化
+        window.addEventListener('resize', () => {
+          if (this.viewer) {
+            this.viewer.width = document.querySelector('.map-container').offsetWidth;
+            this.viewer.height = document.querySelector('.map-container').offsetHeight;
+            this.viewer.stage.canvas.width = this.viewer.width;
+            this.viewer.stage.canvas.height = this.viewer.height;
+          }
+        });
+        
+        // 键盘快捷键
+        document.addEventListener('keydown', (e) => {
+          switch (e.key.toLowerCase()) {
+            case 'r':
+              this.resetView();
+              break;
+            case 'p':
+              document.getElementById('togglePanelBtn').click();
+              break;
+          }
+        });
+        
+        // 全屏变化监听
+        document.addEventListener('fullscreenchange', () => {
+          const fullscreenBtn = document.getElementById('fullscreenBtn');
+          if (document.fullscreenElement) {
+            fullscreenBtn.textContent = '⛶';
+            this.logMessage("已进入全屏模式", "info");
+          } else {
+            fullscreenBtn.textContent = '⛶';
+            this.logMessage("已退出全屏模式", "info");
+          }
+        });
+      }
+    }
+    
+    // 页面加载完成后初始化应用
+    window.addEventListener('DOMContentLoaded', () => {
+      const app = new ROS2DMapViewer();
+      window.ros2dApp = app; // 暴露到全局以便调试
+      
+      console.log('ROS2D 地图查看器已加载');
+      console.log('可用快捷键:');
+      console.log('  R - 重置视图');
+      console.log('  P - 收起/展开控制面板');
+    });
+  </script>
+</body>
+</html>

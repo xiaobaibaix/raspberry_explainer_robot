@@ -1,0 +1,265 @@
+controller_manager:
+  ros__parameters:
+    update_rate: 20 
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+
+    imu_sensor_broadcaster:
+      type: imu_sensor_broadcaster/IMUSensorBroadcaster
+
+    fl_speed_pid:
+      type: pid_controller/PidController
+    fr_speed_pid:
+      type: pid_controller/PidController
+    rl_speed_pid:
+      type: pid_controller/PidController
+    rr_speed_pid:
+      type: pid_controller/PidController
+
+    mecanum_drive_controller:
+      type: mecanum_drive_controller/MecanumDriveController
+
+    mecanum_x_position_pid:
+      type: pid_controller/PidController
+    mecanum_y_position_pid:
+      type: pid_controller/PidController
+    mecanum_z_angle_pid:
+      type: pid_controller/PidController
+
+    position_tracking_controller:
+      type: position_tracking_controller/PositionTrackingController
+    
+fl_speed_pid:
+  ros__parameters:
+    dof_names:
+      - left_front_wheel_joint
+
+    command_interface: velocity
+
+    reference_and_state_interfaces:
+      - velocity
+
+    gains:
+      left_front_wheel_joint: {
+        p: 21.0, 
+        i: 22.0, 
+        d: 4.0, 
+        # p: 10.0, 
+        # i: 0.0, 
+        # d: 0.0, 
+
+        # antiwindup_strategy: 'back_calculation',  # 或 'conditional_integration'
+        # tracking_time_constant: 0.5,  # 反算时间常数
+        # error_deadband: 0.05,  # 误差死区，±0.05内不积分
+
+        i_clamp_min: -120.0, 
+        i_clamp_max: 120.0,  
+        u_clamp_min: -200.0,
+        u_clamp_max: 200.0,
+        # antiwindup: true, 
+        feedforward_gain: 0.95
+      }
+
+fr_speed_pid:
+  ros__parameters:
+    dof_names:
+      - right_front_wheel_joint
+
+    command_interface: velocity
+
+    reference_and_state_interfaces:
+      - velocity
+
+    gains:
+      right_front_wheel_joint: {
+        p: 21.0, 
+        i: 22.0, 
+        d: 4.0, 
+        # p: 10.0, 
+        # i: 0.0, 
+        # d: 0.0, 
+
+        # antiwindup_strategy: 'back_calculation',  # 或 'conditional_integration'
+        # tracking_time_constant: 0.5,  # 反算时间常数
+        # error_deadband: 0.05,  # 误差死区，±0.05内不积分
+
+        i_clamp_min: -120.0, 
+        i_clamp_max: 120.0, 
+        u_clamp_min: -200.0,
+        u_clamp_max: 200.0,
+        # antiwindup: true, 
+        feedforward_gain: 0.95
+      }
+
+
+rl_speed_pid:
+  ros__parameters:
+    dof_names:
+      - left_rear_wheel_joint
+
+    command_interface: velocity
+
+    reference_and_state_interfaces:
+      - velocity
+
+    gains:
+      left_rear_wheel_joint: {
+        p: 21.0, 
+        i: 22.0, 
+        d: 4.0, 
+        # p: 10.0, 
+        # i: 0.0, 
+        # d: 0.0, 
+
+        # antiwindup_strategy: 'back_calculation',  # 或 'conditional_integration'
+        # tracking_time_constant: 0.5,  # 反算时间常数
+        # error_deadband: 0.05,  # 误差死区，±0.05内不积分
+
+        i_clamp_min: -120.0, 
+        i_clamp_max: 120.0, 
+        u_clamp_min: -200.0,
+        u_clamp_max: 200.0,
+        # antiwindup: true, 
+        feedforward_gain: 0.95
+      }
+
+rr_speed_pid:
+  ros__parameters:
+    dof_names:
+      - right_rear_wheel_joint
+
+    command_interface: velocity
+
+    reference_and_state_interfaces:
+      - velocity
+
+    gains:
+      right_rear_wheel_joint: {
+        p: 21.0, 
+        i: 22.0, 
+        d: 4.0, 
+        # p: 10.0, 
+        # i: 0.0, 
+        # d: 0.0, 
+
+        # antiwindup_strategy: 'back_calculation',  # 或 'conditional_integration'
+        # tracking_time_constant: 0.5,  # 反算时间常数
+        # error_deadband: 0.05,  # 误差死区，±0.05内不积分
+
+        i_clamp_min: -120.0, 
+        i_clamp_max: 120.0, 
+        u_clamp_min: -200.0,
+        u_clamp_max: 200.0,
+        # antiwindup: true, 
+        feedforward_gain: 0.95
+      }
+
+mecanum_drive_controller:
+  ros__parameters:
+    reference_timeout: 1.2
+    front_left_wheel_command_joint_name: "fl_speed_pid/left_front_wheel_joint"
+    front_right_wheel_command_joint_name: "fr_speed_pid/right_front_wheel_joint"
+    rear_left_wheel_command_joint_name: "rl_speed_pid/left_rear_wheel_joint"
+    rear_right_wheel_command_joint_name: "rr_speed_pid/right_rear_wheel_joint"
+
+    front_left_wheel_state_joint_name: "left_front_wheel_joint"
+    front_right_wheel_state_joint_name: "right_front_wheel_joint"
+    rear_left_wheel_state_joint_name: "left_rear_wheel_joint"
+    rear_right_wheel_state_joint_name: "right_rear_wheel_joint"
+
+    kinematics:
+      base_frame_offset: { x: 0.0, y: 0.0, theta: 0.0 }
+      wheels_radius: 0.03
+      # sum_of_robot_center_projection_on_X_Y_axis: 1.30  # 
+      # sum_of_robot_center_projection_on_X_Y_axis: 0.32  # 0.2845
+      sum_of_robot_center_projection_on_X_Y_axis: 0.4  # 
+
+    base_frame_id: "base_footprint"
+    odom_frame_id: "odom"
+    enable_odom_tf: true
+    pose_covariance_diagonal: [0.01, 0.01, 0.02, 0.03, 0.03, 0.05]  # X,Y,Z,roll,pitch,yaw
+    twist_covariance_diagonal: [0.01, 0.01, 0.01, 0.02, 0.02, 0.03]
+
+# IMU广播器
+imu_sensor_broadcaster:
+  ros__parameters:
+    sensor_name: "mpu6050"
+    frame_id: "imu"
+    static_covariance_orientation: [0.02, 0.0, 0.0, 0.0, 0.02, 0.0, 0.0, 0.0, 0.15]  # yaw 更不可信
+    static_covariance_angular_velocity: [0.0004, 0.0, 0.0, 0.0, 0.0004, 0.0, 0.0, 0.0, 0.0004]
+    static_covariance_linear_acceleration: [0.0004, 0.0, 0.0, 0.0, 0.0004, 0.0, 0.0, 0.0, 0.0004]
+
+mecanum_x_position_pid:
+  ros__parameters:
+    dof_names:
+      - mecanum_drive_controller/linear/x
+
+    command_interface: velocity
+
+    reference_and_state_interfaces:
+      - position
+      - velocity
+    use_external_measured_states: true # 外部话题作为反馈
+
+    gains:
+      mecanum_drive_controller/linear/x: {
+        p: 1.0,
+        i: 0.0, 
+        d: 0.0, 
+        i_clamp_min: -4.0, 
+        i_clamp_max: 4.0, 
+        u_clamp_min: -0.5,
+        u_clamp_max: 0.5,
+        antiwindup: true, 
+        feedforward_gain: 0.95
+      }
+
+mecanum_y_position_pid:
+  ros__parameters:
+    dof_names:
+      - mecanum_drive_controller/linear/y
+    
+    command_interface: velocity
+
+    reference_and_state_interfaces:
+      - position
+      - velocity
+    use_external_measured_states: true # 外部话题作为反馈
+
+    gains:
+      mecanum_drive_controller/linear/y: {
+        p: 1.0, 
+        i: 0.0, 
+        d: 0.0, 
+        i_clamp_min: -4.0, 
+        i_clamp_max: 4.0, 
+        u_clamp_min: -0.5,
+        u_clamp_max: 0.5,
+        antiwindup: true, 
+        feedforward_gain: 0.95
+      }
+
+mecanum_z_angle_pid:
+  ros__parameters:
+    dof_names:
+      - mecanum_drive_controller/angular/z
+
+    command_interface: velocity
+
+    reference_and_state_interfaces:
+      - position
+      - velocity
+    use_external_measured_states: true # 外部话题作为反馈
+
+    gains:
+      mecanum_drive_controller/angular/z: {
+        p: 1.0,  
+        i: 0.0, 
+        d: 0.0, 
+        i_clamp_min: -4.0, 
+        i_clamp_max: 4.0, 
+        u_clamp_min: -0.5,
+        u_clamp_max: 0.5,
+        antiwindup: false, 
+        feedforward_gain: 0.95
+      }
