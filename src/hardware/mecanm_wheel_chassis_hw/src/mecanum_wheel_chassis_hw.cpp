@@ -232,6 +232,7 @@ namespace mecanum_wheel_chassis_hw
         const rclcpp::Time &time, const rclcpp::Duration &period)
     {
         (void)time;
+        (void)period;
         // // 读取编码器原始值
         auto encoders = motor_driver_->readEncoder();
         // if(frist_readencode)
@@ -331,9 +332,9 @@ namespace mecanum_wheel_chassis_hw
         //             "last_delta_diff=[%d,%d,%d,%d]",
         //             last_delta_diff[0], last_delta_diff[1], last_delta_diff[2], last_delta_diff[3]);
 
-        // RCLCPP_INFO(rclcpp::get_logger("mecanum_wheel_chassis"),
-        //             "encode=[%d,%d,%d,%d]",
-        //             encoders[0], encoders[1], encoders[2], encoders[3]);
+        RCLCPP_INFO(rclcpp::get_logger("mecanum_wheel_chassis"),
+                    "encode=[%d,%d,%d,%d]",
+                    encoders[0], encoders[1], encoders[2], encoders[3]);
 
         return hardware_interface::return_type::OK;
     }
@@ -343,24 +344,16 @@ namespace mecanum_wheel_chassis_hw
     {
         (void)time;
         (void)period;
-        // if(is_timeout){
-        //     is_timeout=false;
-        //     return hardware_interface::return_type::OK; 
-        // }
         std::array<int16_t, 4> pwm_commands = {0};
 
         for (size_t i = 0; i < hw_commands_.size(); ++i)
         {
             pwm_commands[i] = static_cast<int16_t>(hw_commands_[i]);
 
-            // 电机方向调整
             if (i == 1 || i == 2)
                 pwm_commands[i] *= -1;
         }
-        // RCLCPP_INFO(rclcpp::get_logger("mecanum_wheel_chassis"),
-        //             "encode=[%d,%d,%d,%d]",
-        //             pwm_commands[0], pwm_commands[1], pwm_commands[2], pwm_commands[3]);
-        motor_driver_->writeSpeed(pwm_commands);
+        // motor_driver_->writeSpeed(pwm_commands);
         return hardware_interface::return_type::OK;
     }
 

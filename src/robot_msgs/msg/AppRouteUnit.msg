@@ -1,0 +1,2 @@
+uint32 start_time
+geometry_msgs/PoseStamped pose

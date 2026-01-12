@@ -146,25 +146,25 @@ namespace mecanum_wheel_chassis_hw2
                 command_interface_types_[i] = "velocity";
             }
         }
-        node_=node_ = std::make_shared<rclcpp::Node>("mecanum_wheel_chassis_hw_node");
-        if (!node_) {
+        node_ = node_ = std::make_shared<rclcpp::Node>("mecanum_wheel_chassis_hw_node");
+        if (!node_)
+        {
             RCLCPP_ERROR(rclcpp::get_logger("mecanum_wheel_chassis"), "无法获取节点");
             return hardware_interface::CallbackReturn::ERROR;
         }
-        wheel_speed_pub_=node_->create_publisher<robot_msgs::msg::MotorsState>(
+        wheel_speed_pub_ = node_->create_publisher<robot_msgs::msg::MotorsState>(
             "chassis_node/set_motor_speed", rclcpp::QoS(10));
         wheel_encoders_client_ = node_->create_client<robot_msgs::srv::GetPWMServoState>(
             "chassis_node/get_motor_encodes");
 
-
-        RCLCPP_INFO(rclcpp::get_logger("mecanum_wheel_chassis"), 
-            "Mecanum轮式底盘硬件接口初始化成功");
-        RCLCPP_INFO(rclcpp::get_logger("mecanum_wheel_chassis"), 
-            "编码器PPR: %.0f, 轮半径: %.3f, 减速比: %.2f",
-            encoder_ppr_, wheel_radius_, gear_ratio_);
-        RCLCPP_INFO(rclcpp::get_logger("mecanum_wheel_chassis"), 
-            "滤波参数: 位置α=%.2f, 速度α=%.2f, 启用: %s",
-            filter_pos_alpha_, filter_vel_alpha_, filter_enable_ ? "是" : "否");
+        RCLCPP_INFO(rclcpp::get_logger("mecanum_wheel_chassis"),
+                    "Mecanum轮式底盘硬件接口初始化成功");
+        RCLCPP_INFO(rclcpp::get_logger("mecanum_wheel_chassis"),
+                    "编码器PPR: %.0f, 轮半径: %.3f, 减速比: %.2f",
+                    encoder_ppr_, wheel_radius_, gear_ratio_);
+        RCLCPP_INFO(rclcpp::get_logger("mecanum_wheel_chassis"),
+                    "滤波参数: 位置α=%.2f, 速度α=%.2f, 启用: %s",
+                    filter_pos_alpha_, filter_vel_alpha_, filter_enable_ ? "是" : "否");
 
         return hardware_interface::CallbackReturn::SUCCESS;
     }
@@ -211,11 +211,44 @@ namespace mecanum_wheel_chassis_hw2
 
         frist_readencode = true;
 
-        //等待服务可用
+        // 等待服务可用
         while (!wheel_encoders_client_->wait_for_service(std::chrono::seconds(2)))
         {
             RCLCPP_ERROR(rclcpp::get_logger("mecanum_wheel_chassis"), "无法连接到编码器服务");
         }
+        bool read_finished = false;
+        while (!read_finished)
+        {
+            auto request = std::make_shared<robot_msgs::srv::GetPWMServoState::Request>();
+            request.get()->set__cmd({
+                robot_msgs::msg::GetPWMServoCmd().set__id(1),
+                robot_msgs::msg::GetPWMServoCmd().set__id(2),
+                robot_msgs::msg::GetPWMServoCmd().set__id(3),
+                robot_msgs::msg::GetPWMServoCmd().set__id(4),
+            });
+            auto result_future = wheel_encoders_client_->async_send_request(request);
+            if (rclcpp::spin_until_future_complete(node_, result_future, std::chrono::milliseconds(5)) == rclcpp::FutureReturnCode::SUCCESS)
+            {
+                auto resp = result_future.get();
+                if (resp.get()->success == false)
+                {
+                    RCLCPP_ERROR(rclcpp::get_logger("mecanum_wheel_chassis"), "编码器服务返回失败");
+                }
+                else
+                {
+                    for (size_t i = 0; i < resp.get()->state.size(); ++i)
+                    {
+                        auto pos = resp.get()->state[i].position;
+                        last_encoder_counts_[i] = pos.at(0);
+                    }
+                    break;
+                }
+            }
+        }
+        RCLCPP_INFO(rclcpp::get_logger("mecanum_wheel_chassis"), "get the first encoder counts---->[%d,%d,%d,%d]",
+                    last_encoder_counts_[0], last_encoder_counts_[1],
+                    last_encoder_counts_[2], last_encoder_counts_[3]);
+
 
         RCLCPP_INFO(rclcpp::get_logger("mecanum_wheel_chassis"), "硬件接口激活");
         return hardware_interface::CallbackReturn::SUCCESS;
@@ -233,8 +266,7 @@ namespace mecanum_wheel_chassis_hw2
                 robot_msgs::msg::MotorState().set__id(2).set__rps(0),
                 robot_msgs::msg::MotorState().set__id(3).set__rps(0),
                 robot_msgs::msg::MotorState().set__id(4).set__rps(0),
-            })
-        ));
+            })));
 
         frist_readencode = false;
         RCLCPP_INFO(rclcpp::get_logger("mecanum_wheel_chassis"), "硬件接口停用，电机已停止");
@@ -246,7 +278,7 @@ namespace mecanum_wheel_chassis_hw2
     {
         (void)time;
         double dt = period.seconds();
-        std::array<int32_t, 4> encoders;
+        std::array<int32_t, 4> encoders{0, 0, 0, 0};
 
         // 通过服务获取编码器数据
         auto request = std::make_shared<robot_msgs::srv::GetPWMServoState::Request>();
@@ -257,54 +289,63 @@ namespace mecanum_wheel_chassis_hw2
             robot_msgs::msg::GetPWMServoCmd().set__id(4),
         });
         auto result_future = wheel_encoders_client_->async_send_request(request);
-        if (rclcpp::spin_until_future_complete(node_, result_future, std::chrono::milliseconds(5)) == rclcpp::FutureReturnCode::SUCCESS)
+        if (rclcpp::spin_until_future_complete(node_, result_future, std::chrono::milliseconds(10)) == rclcpp::FutureReturnCode::SUCCESS)
         {
             auto resp = result_future.get();
-
-            for(int i=0; i < resp.get()->state.size(); ++i)
+            if(resp.get()->success == false)
+            {
+                RCLCPP_ERROR(rclcpp::get_logger("mecanum_wheel_chassis"), "编码器服务返回失败");
+                return hardware_interface::return_type::OK;
+            }
+            for (size_t i = 0; i < resp.get()->state.size(); ++i)
             {
                 auto pos = resp.get()->state[i].position;
                 encoders[i] = pos.at(0);
             }
+        }else{
+            RCLCPP_ERROR(rclcpp::get_logger("mecanum_wheel_chassis"), "调用编码器服务失败");
+            return hardware_interface::return_type::OK;
         }
 
         // // 计算编码器一圈对应的角度
-        // static const double encoder_resolution = 2.0 * M_PI / (encoder_ppr_ * gear_ratio_);
-        // static int32_t last_delta_diff[4] = {0, 0, 0, 0};
+        static const double encoder_resolution = 2.0 * M_PI / (encoder_ppr_ * gear_ratio_);
+        static int32_t last_delta_diff[4] = {0, 0, 0, 0};
 
-        // for (size_t i = 0; i < hw_positions_.size(); ++i)
-        // {
+        for (size_t i = 0; i < hw_positions_.size(); ++i)
+        {
 
-        //     int32_t encoder_diff;
-        //     // if (i == 1 || i == 2)
-        //     //     encoders[i] *= -1;
+            int32_t encoder_diff;
+            if (i == 1 || i == 2)
+                encoders[i] *= -1;
 
-        //     encoder_diff = encoders[i] - last_encoder_counts_[i];
-        //     last_encoder_counts_[i] = encoders[i];
+            encoder_diff = encoders[i] - last_encoder_counts_[i];
+            last_encoder_counts_[i] = encoders[i];
+            last_delta_diff[i] = encoder_diff;
 
-        //     // 计算角度变化
-        //     double delta_angle = encoder_diff * encoder_resolution;
+            // 计算角度变化
+            double delta_angle = encoder_diff * encoder_resolution;
 
-        //     double raw_position = hw_positions_[i] + delta_angle;
+            double raw_position = hw_positions_[i] + delta_angle;
 
-        //     // 位置滤波
-        //     filtered_positions_[i] = filter_pos_alpha_ * raw_position +
-        //                                 (1.0 - filter_pos_alpha_) * filtered_positions_[i];
+            // 位置滤波
+            filtered_positions_[i] = filter_pos_alpha_ * raw_position +
+                                     (1.0 - filter_pos_alpha_) * filtered_positions_[i];
 
-        //     // 计算速度
-        //     double raw_velocity = delta_angle / dt;
+            // 计算速度
+            double raw_velocity = delta_angle / dt;
 
-        //     // 速度滤波
-        //     filtered_velocities_[i] = filter_vel_alpha_ * raw_velocity +
-        //                                 (1.0 - filter_vel_alpha_) * filtered_velocities_[i];
+            // 速度滤波
+            filtered_velocities_[i] = filter_vel_alpha_ * raw_velocity +
+                                      (1.0 - filter_vel_alpha_) * filtered_velocities_[i];
 
-        //     // 更新硬件接口值
-        //     hw_positions_[i] = filtered_positions_[i];
-        //     hw_velocities_[i] = filtered_velocities_[i];
+            // RCLCPP_INFO(rclcpp::get_logger("mecanum_wheel_chassis"),
+            //     "v=[%.4f]:[%.4f],c=[%d]",
+            //     raw_velocity, filtered_velocities_[i],encoders[i]);
 
-        //     // 保存当前编码器值用于下一次计算
-        //     last_delta_diff[i] = encoder_diff;
-        // }
+            // 更新硬件接口值
+            hw_positions_[i] = filtered_positions_[i];
+            hw_velocities_[i] = filtered_velocities_[i];
+        }
 
         // RCLCPP_INFO(rclcpp::get_logger("mecanum_wheel_chassis"),
         //             "encode=[%d,%d,%d,%d]",
@@ -321,7 +362,7 @@ namespace mecanum_wheel_chassis_hw2
 
         std::array<int16_t, 4> pwm_commands = {0};
 
-        for (size_t i = 0; i < hw_commands_.size(); ++i)
+        for (int i = 0; i < 4; i++)
         {
             pwm_commands[i] = static_cast<int16_t>(hw_commands_[i]);
             if (i == 1 || i == 2)
@@ -333,8 +374,7 @@ namespace mecanum_wheel_chassis_hw2
                 robot_msgs::msg::MotorState().set__id(2).set__rps(pwm_commands[1]),
                 robot_msgs::msg::MotorState().set__id(3).set__rps(pwm_commands[2]),
                 robot_msgs::msg::MotorState().set__id(4).set__rps(pwm_commands[3]),
-            })
-        ));
+            })));
         return hardware_interface::return_type::OK;
     }
 

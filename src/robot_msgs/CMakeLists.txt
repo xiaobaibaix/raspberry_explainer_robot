@@ -21,6 +21,11 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/MotorsState.msg"
   "msg/GetPWMServoCmd.msg"
   "msg/PWMServoState.msg"
+  "msg/VoiceState.msg"
+  "msg/VoicesState.msg"
+  "msg/AppVoicePlay.msg"
+  "msg/AppSetRoute.msg"
+  "msg/AppRouteUnit.msg"
   "srv/GetPWMServoState.srv"
   "action/ToPose.action"
 

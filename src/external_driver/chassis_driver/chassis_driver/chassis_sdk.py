@@ -33,6 +33,7 @@ class PacketFunction(enum.IntEnum):
     PACKET_FUNC_SBUS = 9        # 航模遥控获取(obtain model aircraft remote control)
     PACKET_FUNC_OLED = 10       # OLED 显示内容设置(set OLED display content)
     PACKET_FUNC_RGB = 11        # RGB
+    PACKET_FUNC_VOICE = 14      # 语音控制(voice control)
     PACKET_FUNC_NONE = 12
 
 class PacketReportKeyEvents(enum.IntEnum):
@@ -127,6 +128,7 @@ class Board:
         self.imu_queue          = queue.Queue(maxsize=10)
         self.gamepad_queue      = queue.Queue(maxsize=10)
         self.sbus_queue         = queue.Queue(maxsize=10)
+        self.voice_queue         = queue.Queue(maxsize=10)
 
         self.parsers = {
             PacketFunction.PACKET_FUNC_SYS: self.packet_report_sys,
@@ -137,10 +139,16 @@ class Board:
             PacketFunction.PACKET_FUNC_SBUS: self.packet_report_sbus,
             PacketFunction.PACKET_FUNC_PWM_SERVO: self.packet_report_pwm_servo,
             PacketFunction.PACKET_FUNC_MOTOR: self.packet_report_pwm_servo,
+            PacketFunction.PACKET_FUNC_VOICE: self.packet_report_voice,
         }
         
         threading.Thread(target=self.recv_task, daemon=True).start()
 
+    def packet_report_voice(self, data):
+        try:
+            self.voice_queue.put_nowait(data)
+        except queue.Full:
+            pass
 
     def packet_report_sys(self, data):
         try:
@@ -183,6 +191,18 @@ class Board:
             self.sbus_queue.put_nowait(data)
         except queue.Full:
             pass
+        
+    def get_voice(self):
+        # 获取语音识别结果(obtain voice recognition result)
+        if self.enable_recv:
+            try:
+                data = self.voice_queue.get(block=False)
+                return data[0]
+            except queue.Empty:
+                return None
+        else:
+            print('get_voice enable reception first!')
+            return None
 
     def get_battery(self):
         # 获取电压，单位mAh(obtain voltage, which is in the unit of mAh)
@@ -335,7 +355,9 @@ class Board:
         buf = bytes(buf)
         # print(' '.join(f'{b:02X}' for b in buf),flush=True)
         self.port.write(buf)
-
+        
+    def set_voice_state(self, state):
+        self.buf_write(PacketFunction.PACKET_FUNC_VOICE, struct.pack("<B", state))
 
     def set_led(self, on_time, off_time, repeat=1, led_id=1):
         on_time = int(on_time*1000)
@@ -606,7 +628,7 @@ def pwm_servo_test(board):
     print('offset:', board.pwm_servo_read_offset(servo_id))
     print('position:', board.pwm_servo_read_position(servo_id))
 
-time_delay = 0.5
+time_delay = 0.005
 
 def motor_test(board,stop):
     # board.set_motor_speed([[1, 100], [2, 100], [3, 100], [4, 100]])

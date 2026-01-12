@@ -57,6 +57,7 @@ namespace mecanum_wheel_chassis_hw2
         double filter_pos_alpha_;
         double filter_vel_alpha_;
         bool filter_enable_;
+        
         bool frist_readencode;
         bool is_timeout=false;
 
