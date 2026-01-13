@@ -14,6 +14,7 @@ from launch.conditions import UnlessCondition
 from launch_ros.actions import Node as LaunchNode
 import subprocess
 import os
+from launch.actions import GroupAction
 
 def generate_launch_description():
 
@@ -21,6 +22,12 @@ def generate_launch_description():
     nav2_path = get_package_share_directory("navigation")
 
     ld= LaunchDescription()
+    
+    ld.add_action(DeclareLaunchArgument(
+        'use_nav2',
+        default_value='false',
+        description='Whether to use nav2')
+    )
 
     ld.add_action(
         IncludeLaunchDescription(
@@ -45,34 +52,28 @@ def generate_launch_description():
             ]),
             launch_arguments={
                 'robot_desc': 'robot_car_voice.xacro',
+                'use_ekf': 'true',
+                'start_position_ctrl': 'false'
             }.items()
         )
     )
 
-    # nav2_local=IncludeLaunchDescription(
-    #     PythonLaunchDescriptionSource([
-    #         os.path.join(
-    #             nav2_path,
-    #             'launch',
-    #             'nav2_local_localization.launch.py'
-    #         ),
-    #     ])  
-    # )
-    # ld.add_action(TimerAction(
-    #     period=5.0,
-    #     actions=[nav2_local],
-    # ))
-    # nav2_rout=IncludeLaunchDescription(
-    #     PythonLaunchDescriptionSource([
-    #         os.path.join(
-    #             nav2_path,
-    #             'launch',
-    #             'nav2_route_planning.launch.py'
-    #         ),
-    #     ])  
-    # )
-    # ld.add_action(TimerAction(
-    #     period=10.0,
-    #     actions=[nav2_rout],
-    # ))
+    # 延迟10s启动导航launch文件
+    ld.add_action(TimerAction(
+        period=10.0,
+        actions=[
+            GroupAction([
+                IncludeLaunchDescription(
+                    PythonLaunchDescriptionSource([
+                        PathJoinSubstitution([
+                            nav2_path,
+                            'launch',
+                            'nav2_system.launch.py'
+                        ])
+                    ]),
+                )
+            ])
+        ],
+        condition=IfCondition(LaunchConfiguration('use_nav2'))
+    ))
     return ld

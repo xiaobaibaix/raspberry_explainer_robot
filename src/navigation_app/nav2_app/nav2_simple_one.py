@@ -69,7 +69,7 @@ def main() -> None:
     go_to_pose_task = navigator.goToPose(goal_pose)
 
     i = 0
-    while not navigator.isTaskComplete(task=go_to_pose_task):
+    while not navigator.isTaskComplete():
         ################################################
         #
         # Implement some code here for your application!
@@ -78,7 +78,7 @@ def main() -> None:
 
         # Do something with the feedback
         i = i + 1
-        feedback = navigator.getFeedback(task=go_to_pose_task)
+        feedback = navigator.getFeedback()
         if feedback and i % 5 == 0:
             print(
                 'Estimated time of arrival: '

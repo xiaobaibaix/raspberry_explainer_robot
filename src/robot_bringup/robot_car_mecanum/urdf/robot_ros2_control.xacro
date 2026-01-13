@@ -3,8 +3,7 @@
 
   <ros2_control name="MecanumChassisSystem" type="system">
     <hardware>
-      <!-- <plugin>mecanum_wheel_chassis_hw/MecanumWheelChassisHW</plugin> -->
-      <plugin>mecanum_wheel_chassis_hw2/MecanumWheelChassisHW2</plugin>
+      <plugin>mecanum_wheel_chassis_hw/MecanumWheelChassisHW</plugin>
       <param name="serial_port">/dev/ttyUSB0</param>
       <param name="baud_rate">115200</param>
       <!-- <param name="encoder_ppr">780.0</param> -->

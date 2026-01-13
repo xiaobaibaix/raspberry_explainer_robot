@@ -18,11 +18,17 @@ from launch_ros.parameter_descriptions import ParameterFile
 
 
 def generate_launch_description():
-
     ld = LaunchDescription()
 
     #去掉了drvier的节点
-
+    ld.add_action(
+        Node(
+            package='chassis_driver',
+            executable='chassis',
+            output='screen',
+            name='chassis_node',
+        )
+    )
     ld.add_action(
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource([
