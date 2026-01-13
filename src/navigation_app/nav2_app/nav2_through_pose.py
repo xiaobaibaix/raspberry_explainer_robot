@@ -53,7 +53,7 @@ class NavigatorApp(Node):
         )
 
         self.create_subscription(
-            PoseArray,
+            VoiceState,
             'chassis_node/voice_end',
             self.voice_end_callback, 10
         )
@@ -85,7 +85,7 @@ class NavigatorApp(Node):
 
         self.get_logger().info('Navigator app has been started.')
 
-    def voice_end_callback(self, msg: PoseArray) -> None:
+    def voice_end_callback(self, msg: VoiceState) -> None:
         """语音播放结束回调"""
         with self.voice_state_lock:
             self.is_played = True
@@ -121,6 +121,12 @@ class NavigatorApp(Node):
                 
             elif new_state == NavigatorStateEnum.Running:
                 if not self.nav_thread_active and self.goal_poses:
+                    # 如果导航线程已存在且仍在运行，先停止它
+                    if self.nav_thread is not None and self.nav_thread.is_alive():
+                        self.get_logger().warn('Old navigation thread is still alive, stopping it.')
+                        self.nav_thread_stop_flag = True
+                        self.nav_condition.notify_all()
+                        self.nav_thread.join(timeout=1.0)
                     # 启动导航线程
                     self.nav_thread_stop_flag = False
                     self.nav_thread = threading.Thread(target=self.navigator_thread_func, daemon=True)

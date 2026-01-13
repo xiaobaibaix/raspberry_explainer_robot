@@ -34,7 +34,7 @@ class PacketFunction(enum.IntEnum):
     PACKET_FUNC_OLED = 10       # OLED 显示内容设置(set OLED display content)
     PACKET_FUNC_RGB = 11        # RGB
     PACKET_FUNC_VOICE = 14      # 语音控制(voice control)
-    PACKET_FUNC_NONE = 12
+    PACKET_FUNC_NONE = 15
 
 class PacketReportKeyEvents(enum.IntEnum):
     # 按键的不同状态(different button status)
@@ -529,6 +529,7 @@ class Board:
                 recv_data = self.port.read()
                 if recv_data:
                     for dat in recv_data:
+                        print(f' {dat:02X}', flush=True)
                         if self.state == PacketControllerState.PACKET_CONTROLLER_STATE_STARTBYTE1:
                             if dat == 0xAA:
                                 self.state = PacketControllerState.PACKET_CONTROLLER_STATE_STARTBYTE2
@@ -564,10 +565,13 @@ class Board:
                         elif self.state == PacketControllerState.PACKET_CONTROLLER_STATE_CHECKSUM:
                             ck = checksum_diff(bytes(self.frame))
                             if(ck != dat):
-                                print("校验失败: ", end='')
+                                print(f"校验失败:[{dat:02x},{ck:02x}] dat:", end='')
                                 print(' '.join(f'{b:02X}' for b in self.frame),flush=True)
                                 self.state = PacketControllerState.PACKET_CONTROLLER_STATE_STARTBYTE1
                                 continue
+                            # else:
+                            #     print(f"校验成功:[{dat:02x},{ck:02x}] dat:", end='')
+                            #     print(' '.join(f'{b:02X}' for b in self.frame),flush=True)
                             func = PacketFunction(self.frame[0])
                             data = bytes(self.frame[2:])
                             if func in self.parsers:
