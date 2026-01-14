@@ -289,12 +289,12 @@ namespace mecanum_wheel_chassis_hw
             robot_msgs::msg::GetPWMServoCmd().set__id(4),
         });
         auto result_future = wheel_encoders_client_->async_send_request(request);
-        if (rclcpp::spin_until_future_complete(node_, result_future, std::chrono::milliseconds(10)) == rclcpp::FutureReturnCode::SUCCESS)
+        if (rclcpp::spin_until_future_complete(node_, result_future, std::chrono::milliseconds(5)) == rclcpp::FutureReturnCode::SUCCESS)
         {
             auto resp = result_future.get();
             if(resp.get()->success == false)
             {
-                RCLCPP_ERROR(rclcpp::get_logger("mecanum_wheel_chassis"), "编码器服务返回失败");
+                // RCLCPP_WARN(rclcpp::get_logger("mecanum_wheel_chassis"), "编码器服务返回失败");
                 return hardware_interface::return_type::OK;
             }
             for (size_t i = 0; i < resp.get()->state.size(); ++i)
@@ -303,13 +303,13 @@ namespace mecanum_wheel_chassis_hw
                 encoders[i] = pos.at(0);
             }
         }else{
-            RCLCPP_ERROR(rclcpp::get_logger("mecanum_wheel_chassis"), "调用编码器服务失败");
+            // RCLCPP_WARN(rclcpp::get_logger("mecanum_wheel_chassis"), "调用编码器服务失败");
             return hardware_interface::return_type::OK;
         }
 
         // // 计算编码器一圈对应的角度
         static const double encoder_resolution = 2.0 * M_PI / (encoder_ppr_ * gear_ratio_);
-        static int32_t last_delta_diff[4] = {0, 0, 0, 0};
+        // static int32_t last_delta_diff[4] = {0, 0, 0, 0};
 
         for (size_t i = 0; i < hw_positions_.size(); ++i)
         {
@@ -320,7 +320,7 @@ namespace mecanum_wheel_chassis_hw
 
             encoder_diff = encoders[i] - last_encoder_counts_[i];
             last_encoder_counts_[i] = encoders[i];
-            last_delta_diff[i] = encoder_diff;
+            // last_delta_diff[i] = encoder_diff;
 
             // 计算角度变化
             double delta_angle = encoder_diff * encoder_resolution;

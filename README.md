@@ -125,6 +125,44 @@ angular:
   y: 0.0
   z: 0.0"
 
+# 创建一个复杂的JSON结构
+ros2 topic pub /nav2_through_pose_navigator_app/set_through_poses robot_msgs/msg/AppSetRoute '
+{
+  poses: [
+    {
+      start_time: 0,
+      pose: {
+        header: {
+          stamp: {sec: 0, nanosec: 0},
+          frame_id: "map"
+        },
+        pose: {
+          position: {x: 1.0, y: 2.0, z: 0.0},
+          orientation: {x: 0.0, y: 0.0, z: 0.0, w: 1.0}
+        }
+      }
+    },
+    {
+      start_time: 10,
+      pose: {
+        header: {
+          stamp: {sec: 10, nanosec: 0},
+          frame_id: "map"
+        },
+        pose: {
+          position: {x: 3.0, y: 4.0, z: 0.0},
+          orientation: {x: 0.0, y: 0.0, z: 1.0, w: 0.0}
+        }
+      }
+    }
+  ],
+  map: [
+    {from_idex: 0, to_idex: 1, play_id: 1, play_percent: 0.5},
+    {from_idex: 1, to_idex: 2, play_id: 2, play_percent: 0.8}
+  ]
+}'
+# 发布一次
+ros2 topic pub /nav2_through_pose_navigator_app/set_through_poses robot_msgs/msg/AppSetRoute --once < /home/ubuntu/workspace/raspberrypi_robot/src/navigation_app/config/set_route.yaml
 
 # vnc
 

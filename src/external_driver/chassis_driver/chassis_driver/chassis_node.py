@@ -55,10 +55,10 @@ class RosRobotController(Node):
         voice_state = self.board.get_voice()
         if voice_state is not None:
             msg = VoiceState()
-            msg.id = voice_state[0] & 0x7F
-            msg.state = (voice_state[0] >> 7) & 0x01
+            msg.id = voice_state & 0x7F
+            msg.state = (voice_state >> 7) & 0x01
             publisher.publish(msg)
-            self.get_logger().info(f"pub_voice_data: id={msg.id}, state={msg.state}")
+            # self.get_logger().info(f"pub_voice_data: id={msg.id}, state={msg.state}")
 
     def set_motor_state(self, msg):
         data = []

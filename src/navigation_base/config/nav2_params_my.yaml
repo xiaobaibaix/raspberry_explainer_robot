@@ -87,21 +87,21 @@ controller_server:
       plugin: "dwb_core::DWBLocalPlanner"
       debug_trajectory_details: False
       # 速度边界
-      min_vel_x: -0.2
+      min_vel_x:  0.0
       max_vel_x:  0.2
       min_vel_y:  0.0          # 新增：后退横移
       max_vel_y:  0.0
-      max_vel_theta: 1.0
+      max_vel_theta: 0.5
       min_speed_xy: 0.0
       max_speed_xy: 0.2        # 合成速度上限
       min_speed_theta: 0.0
       # 加速度边界
       acc_lim_x: 2.5
       acc_lim_y: 0.0            # 新增：Y 向加速度
-      acc_lim_theta: 3.2
-      decel_lim_x: -2.5
+      acc_lim_theta: 2.2
+      decel_lim_x: 0.0
       decel_lim_y: 0.0
-      decel_lim_theta: -3.2
+      decel_lim_theta: -2.2
       # 采样密度`
       vx_samples: 8
       vy_samples: 1             # 至少 10，横移才连续

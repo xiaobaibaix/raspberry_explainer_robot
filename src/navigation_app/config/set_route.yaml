@@ -1,0 +1,45 @@
+poses:
+  - start_time: 0
+    pose:
+      header:
+        frame_id: "map"
+      pose:
+        position: {x: 1.0, y: 0.0, z: 0.0}
+        orientation: {x: 0.0, y: 0.0, z: 0.0, w: 1.0}
+  - start_time: 0
+    pose:
+      header:
+        frame_id: "map"
+      pose:
+        position: {x: 1.0, y: -1.0, z: 0.0}
+        orientation: {x: 0.0, y: 0.0, z: 0.707, w: 0.707}
+  - start_time: 10
+    pose:
+      header:
+        frame_id: "map"
+      pose:
+        position: {x: 1.0, y: -2.0, z: 0.0}
+        orientation: {x: 0.0, y: 0.0, z: 0.707, w: 0.707}
+  - start_time: 10
+    pose:
+      header:
+        frame_id: "map"
+      pose:
+        position: {x: 0.0, y: 0.0, z: 0.0}
+        orientation: {x: 0.0, y: 0.0, z: 0.0, w: 1.0}
+map:
+  - from_idex: 0
+    play_id: 2
+    play_percent: 0.1
+  - from_idex: 0
+    play_id: 1
+    play_percent: 0.4
+  - from_idex: 1
+    play_id: 1
+    play_percent: 0.9
+  - from_idex: 2
+    play_id: 1
+    play_percent: 0.3
+  - from_idex: 3
+    play_id: 3
+    play_percent: 0.3

@@ -111,10 +111,5 @@ def main() -> None:
     else:
         print('Goal has an invalid return status!')
 
-    navigator.lifecycleShutdown()
-
-    exit(0)
-
-
 if __name__ == '__main__':
     main()

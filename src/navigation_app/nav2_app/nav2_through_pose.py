@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
-from geometry_msgs.msg import PoseStamped, PoseArray
-from robot_msgs.msg import VoiceState, AppRouteUnit
-from std_msgs.msg import Bool
-from robot_msgs.msg import AppSetRoute
+from geometry_msgs.msg import Pose,PoseStamped,PoseWithCovarianceStamped
+from robot_msgs.msg import VoiceState, AppRouteUnit, AppSetRoute, AppVoicePlay
 from nav2_simple_commander.robot_navigator import BasicNavigator, TaskResult
 import rclpy
 from rclpy.duration import Duration
@@ -10,15 +8,31 @@ from rclpy.node import Node
 from enum import Enum
 import math
 from std_msgs.msg import Int8
-import threading
-from typing import List, Dict, Tuple, Optional
+from typing import List, Dict, Tuple, Optional, Set, Deque
 import time
+from dataclasses import dataclass
+from collections import defaultdict, deque
+import bisect
+
+
+@dataclass
+class VoiceTrigger:
+    voice_id: int
+    play_percent: float
+
 
 
 class NavigatorStateEnum(Enum):
     Running = 0
     Stop = 1
     Pause = 2
+
+class NavigationStep(Enum):
+    IDLE = 0
+    WAITING_FOR_START = 1
+    NAVIGATING = 2
+    COMPLETE = 3
+    FAILED = 4
 
 
 class NavigatorApp(Node):
@@ -37,8 +51,15 @@ class NavigatorApp(Node):
         self.navigator.setInitialPose(initial_pose)
 
         # 等待nav2激活
+        self.get_logger().info('Waiting for Nav2 to activate...')
         self.navigator.waitUntilNav2Active()
-
+        self.get_logger().info('Nav2 is active!')
+        # 获取acm状态
+        self.create_subscription(
+            PoseWithCovarianceStamped,
+            '/amcl_pose',
+            self.amcl_pose_callback, 10
+        )
         # 订阅器
         self.create_subscription(
             AppSetRoute,
@@ -67,29 +88,40 @@ class NavigatorApp(Node):
 
         # 状态变量
         self.nav2_state = NavigatorStateEnum.Stop
-        self.is_navigating = False  # 是否正在导航到一个目标点
-        self.cur_pose_index = 0  # 当前导航起点索引
-        self.is_played = False  # 当前路径语音是否已播放
-        self.nav_thread_active = False  # 导航线程是否活跃
-        self.nav_thread_stop_flag = False  # 导航线程停止标志
-        self.voice_state_lock = threading.Lock()  # 语音状态锁
+        self.navigation_step = NavigationStep.IDLE
+        self.current_pose_index = 0     # 当前导航目标点索引
+        self.current_segment_total_distance =0.0  # 当前段落总距离
+        self.current_segment_voices: Deque[VoiceTrigger] = deque()  # 当前段落的语音触发队列
+        self.task_start_time= None  # 任务开始时间
+        # 导航最开始的位置
+        self.init_pose: PoseStamped = initial_pose
+        self.last_log_time= None  # 上次日志记录时间
 
         # 数据存储
-        self.voices_map: Dict[int, Tuple[int, float, int]] = {}  # 语音映射
+        # 语音映射字典: 起点索引 -> 语音列表[(百分比, 语音ID)]
+        self.voices_map: Dict[int, List[Tuple[float, int]]] = defaultdict(list)
         self.goal_poses: List[AppRouteUnit] = []  # 导航目标点列表
-        self.current_voice_id = -1  # 当前播放的语音ID
 
-        # 线程控制
-        self.nav_thread: Optional[threading.Thread] = None
-        self.nav_condition = threading.Condition()
+        # 定时器
+        self.timer = self.create_timer(0.1, self.navigation_timer_callback)  # 100ms定时器
 
         self.get_logger().info('Navigator app has been started.')
 
+    def amcl_pose_callback(self, msg: PoseWithCovarianceStamped) -> None:
+        """AMCL位置回调"""
+        # 仅在导航停止状态下更新初始位置
+        self.init_pose = PoseStamped()
+        self.init_pose.header = msg.header
+        self.init_pose.pose = msg.pose.pose
+        
+        self.get_logger().info(
+            f'AMCL pose updated: Position ({msg.pose.pose.position.x}, '
+            f'{msg.pose.pose.position.y})'
+        )
+
     def voice_end_callback(self, msg: VoiceState) -> None:
         """语音播放结束回调"""
-        with self.voice_state_lock:
-            self.is_played = True
-            self.get_logger().info(f'Voice playback completed for voice ID')
+        self.get_logger().info(f'Voice playback completed for voice ID {msg.id}')
 
     def set_navigation_state_callback(self, msg: Int8) -> None:
         """设置导航状态回调"""
@@ -99,232 +131,301 @@ class NavigatorApp(Node):
             self.get_logger().warn(f'Invalid navigation state: {msg.data}')
             return
 
-        with self.nav_condition:
-            old_state = self.nav2_state
-            self.nav2_state = new_state
+        old_state = self.nav2_state
+        self.nav2_state = new_state
+        
+        if new_state == NavigatorStateEnum.Stop:
+            # 停止导航
+            if self.navigation_step == NavigationStep.NAVIGATING:
+                self.navigator.cancelTask()
+                self.get_logger().info('Navigation task cancelled.')
             
-            if new_state == NavigatorStateEnum.Stop:
-                # 停止导航
-                if self.is_navigating:
-                    self.navigator.cancelTask()
-                
-                # 停止导航线程
-                self.nav_thread_stop_flag = True
-                self.nav_condition.notify_all()
-                
-                self.get_logger().info('Navigator is stopped.')
-                
-            elif new_state == NavigatorStateEnum.Pause:
-                if self.is_navigating:
-                    self.navigator.pauseTask()
+            # 重置状态
+            self.navigation_step = NavigationStep.IDLE
+            self.current_pose_index = 0
+            self.current_segment_total_distance=0.0
+            self.current_segment_voices.clear()
+            self.task_start_time = None
+            
+            self.get_logger().info('Navigator is stopped.')
+            
+        elif new_state == NavigatorStateEnum.Pause:
+            if self.navigation_step == NavigationStep.NAVIGATING:
+                self.navigator.pauseTask()
                 self.get_logger().info('Navigator is paused.')
                 
-            elif new_state == NavigatorStateEnum.Running:
-                if not self.nav_thread_active and self.goal_poses:
-                    # 如果导航线程已存在且仍在运行，先停止它
-                    if self.nav_thread is not None and self.nav_thread.is_alive():
-                        self.get_logger().warn('Old navigation thread is still alive, stopping it.')
-                        self.nav_thread_stop_flag = True
-                        self.nav_condition.notify_all()
-                        self.nav_thread.join(timeout=1.0)
-                    # 启动导航线程
-                    self.nav_thread_stop_flag = False
-                    self.nav_thread = threading.Thread(target=self.navigator_thread_func, daemon=True)
-                    self.nav_thread.start()
-                    self.get_logger().info('Navigator is started.')
-                elif self.is_navigating and old_state == NavigatorStateEnum.Pause:
+        elif new_state == NavigatorStateEnum.Running:
+            if old_state == NavigatorStateEnum.Stop:
+                # 从停止状态开始
+                if self.goal_poses:
+                    self.task_start_time = self.get_clock().now()
+                    self.current_pose_index = 0
+                    self.navigation_step = NavigationStep.WAITING_FOR_START
+                    self.get_logger().info('Starting navigation from stop state.')
+                else:
+                    self.get_logger().warn('Cannot start navigation: no goal poses set.')
+                    self.nav2_state = NavigatorStateEnum.Stop
+                    
+            elif old_state == NavigatorStateEnum.Pause:
+                if self.navigation_step == NavigationStep.NAVIGATING:
                     self.navigator.resumeTask()
                     self.get_logger().info('Navigator is resumed.')
+                else:
+                    self.get_logger().warn('Cannot resume: not currently navigating.')
 
     def goal_poses_callback(self, msg: AppSetRoute) -> None:
         """目标点回调"""
-        with self.nav_condition:
-            # 停止当前导航
-            if self.nav2_state == NavigatorStateEnum.Running and self.is_navigating:
-                self.navigator.cancelTask()
-            
-            # 更新数据
-            self.goal_poses = msg.poses
-            self.voices_map = {}
-            for v in msg.map:
-                self.voices_map[v.from_idex] = (v.to_idex, v.play_percent, v.play_id)
-            
-            # 重置状态
-            self.cur_pose_index = 0
-            
-            # 如果当前是运行状态且有目标点，启动导航线程
-            if self.nav2_state == NavigatorStateEnum.Running and len(self.goal_poses) > 0:
-                if not self.nav_thread_active:
-                    self.nav_thread_stop_flag = False
-                    self.nav_thread = threading.Thread(target=self.navigator_thread_func, daemon=True)
-                    self.nav_thread.start()
-            
-            self.get_logger().info(f'Received {len(self.goal_poses)} goal poses.')
+        # 停止当前导航
+        if self.nav2_state == NavigatorStateEnum.Running and self.navigation_step == NavigationStep.NAVIGATING:
+            self.navigator.cancelTask()
+            self.get_logger().info('Current navigation cancelled due to new goal poses.')
+        
+        # 清空旧的语音映射
+        self.voices_map.clear()
+        
+        # 更新目标点
+        self.goal_poses = msg.poses
+        
+        # 更新语音映射
+        for v in msg.map:
+            # 语音映射: (百分比, 语音ID, 目标点索引)
+            self.voices_map[v.from_idex].append((v.play_percent, v.play_id))
+        
+        # 重置状态
+        self.current_pose_index = 0
+        self.current_segment_total_distance=0.0
+        self.navigation_step = NavigationStep.IDLE
+        self.current_segment_voices.clear()
+        self.task_start_time = None
+        
+        # 如果当前是运行状态，自动开始导航
+        if self.nav2_state == NavigatorStateEnum.Running and len(self.goal_poses) > 0:
+            self.task_start_time = self.get_clock().now()
+            self.navigation_step = NavigationStep.WAITING_FOR_START
+            self.get_logger().info('New goal poses received, navigation will start.')
+        
+        # 打印接收了多少个目标点以及对应的详细信息
+        self.get_logger().info(f'Received {len(self.goal_poses)} goal poses.')
+        for i, pose_unit in enumerate(self.goal_poses):
+            self.get_logger().info(
+                f'Pose {i}: Start time {pose_unit.start_time}s, '
+                f'Position ({pose_unit.pose.pose.position.x}, {pose_unit.pose.pose.position.y})'
+            )
+        
+        # 打印语音映射信息
+        total_voice_triggers = sum(len(triggers) for triggers in self.voices_map.values())
+        self.get_logger().info(f'Received {total_voice_triggers} voice triggers.')
+        
+        for from_idx, triggers in self.voices_map.items():
+            for percent, voice_id in triggers:
+                play_type = "start" if percent == 0.0 else "end" if percent >= 0.999 else f"{percent*100:.1f}%"
+                self.get_logger().info(
+                    f'Voice trigger: from {from_idx}, '
+                    f'play ID {voice_id} at {play_type}'
+                )
 
-    def calculate_distance(self, pose1: PoseStamped, pose2: PoseStamped) -> float:
+    def calculate_distance(self, pose1: Pose, pose2: Pose) -> float:
         """计算两个点之间的欧氏距离"""
-        dx = pose1.pose.position.x - pose2.pose.position.x
-        dy = pose1.pose.position.y - pose2.pose.position.y
+        dx = pose1.position.x - pose2.position.x
+        dy = pose1.position.y - pose2.position.y
         return math.sqrt(dx*dx + dy*dy)
 
-    def wait_for_delay_or_stop(self, delay_seconds: float) -> bool:
-        """等待指定时间，但如果收到停止信号则提前返回"""
-        if delay_seconds <= 0:
-            return True
-            
-        start_time = time.time()
-        with self.nav_condition:
-            while (time.time() - start_time) < delay_seconds:
-                if self.nav_thread_stop_flag:
-                    return False
-                    
-                remaining = delay_seconds - (time.time() - start_time)
-                if remaining > 0:
-                    self.nav_condition.wait(timeout=min(0.5, remaining))
-            return True
-
     def publish_voice_command(self, voice_id: int, state: int) -> None:
-        """发布语音命令，不等待完成"""
+        """发布语音命令"""
         voice_msg = VoiceState()
         voice_msg.id = voice_id
-        voice_msg.state = state  # 使用传入的状态
+        voice_msg.state = state
         self.voice_pub.publish(voice_msg)
-        self.get_logger().info(f'Published voice command {voice_id}')
-        
-        with self.voice_state_lock:
-            self.is_played = False
-            self.current_voice_id = voice_id
+        self.get_logger().info(f'Published voice command {voice_id} with state {state}')
 
-    def navigator_thread_func(self) -> None:
-        """导航线程主函数"""
-        with self.nav_condition:
-            if self.nav_thread_active:
-                self.get_logger().warn('Navigation thread is already running!')
-                return
-            self.nav_thread_active = True
-            self.get_logger().info('Navigation thread started.')
-
-        try:
-            for i in range(len(self.goal_poses)):
-                with self.nav_condition:
-                    if self.nav_thread_stop_flag:
-                        break
-                
-                # 检查停止标志
-                if self.nav_thread_stop_flag:
-                    break
-                
-                # 获取当前目标点
-                current_goal = self.goal_poses[i]
-                
-                # 延迟执行
-                if not self.wait_for_delay_or_stop(current_goal.start_time):
-                    break
-                
-                with self.nav_condition:
-                    if self.nav_thread_stop_flag or self.nav2_state != NavigatorStateEnum.Running:
-                        break
-                
-                # 导航到目标点
-                self.get_logger().info(f'Navigating to pose {i}')
-                
-                with self.nav_condition:
-                    self.is_navigating = True
-                    self.cur_pose_index = i
-                
-                # 创建导航任务
-                go_to_pose_task = self.navigator.goToPose(current_goal.pose)
-                
-                # 获取语音信息
-                voice_info = self.voices_map.get(i, (None, None, None))
-                target_index, play_percent, voice_id = voice_info
-                
-                # 计算路径长度（如果有语音）
-                distance = 0.0
-                if target_index is not None and target_index < len(self.goal_poses):
-                    distance = self.calculate_distance(
-                        current_goal.pose,
-                        self.goal_poses[target_index].pose
-                    )
-                    self.get_logger().info(
-                        f'Will play voice {voice_id} at {play_percent*100}% of distance {distance:.2f}m'
-                    )
-                
-                # 处理语音播放逻辑
-                voice_played = False
-                if voice_id is not None and play_percent <= 0.01:
-                    # 立即播放语音
-                    self.publish_voice_command(voice_id, state=1)
-                    voice_played = True
-                
-                # 监控导航任务
-                while not self.navigator.isTaskComplete(task=go_to_pose_task):
-                    with self.nav_condition:
-                        if self.nav_thread_stop_flag or self.nav2_state == NavigatorStateEnum.Stop:
-                            self.navigator.cancelTask()
-                            break
-                        elif self.nav2_state == NavigatorStateEnum.Pause:
-                            self.nav_condition.wait()
-                            continue
-                    
-                    # 获取反馈
-                    feedback = self.navigator.getFeedback(task=go_to_pose_task)
-                    
-                    # 处理语音播放
-                    if (not voice_played and voice_id is not None and target_index is not None and
-                        distance > 0 and feedback.distance_remaining > 0):
-                        
-                        current_percent = 1.0 - (feedback.distance_remaining / distance)
-                        if abs(current_percent - play_percent) < 0.05:
-                            self.publish_voice_command(voice_id, state=1)
-                            voice_played = True
-                    
-                    # 定期记录状态
-                    if feedback.navigation_time.sec % 5 == 0:  # 每5秒记录一次
-                        self.get_logger().info(
-                            f'ETA: {feedback.estimated_time_remaining.sec:.0f} seconds, '
-                            f'Remaining distance: {feedback.distance_remaining:.2f}m'
-                        )
-                    
-                    # 检查超时
-                    if Duration.from_msg(feedback.navigation_time) > Duration(seconds=600.0):
-                        self.get_logger().warn('Navigation timed out after 10 minutes')
-                        self.navigator.cancelTask()
-                        break
-                
-                # 获取导航结果
-                with self.nav_condition:
-                    self.is_navigating = False
-                    
-                result = self.navigator.getResult()
-                if result == TaskResult.SUCCEEDED:
-                    self.get_logger().info(f'Pose {i} succeeded!')
-                elif result == TaskResult.CANCELED:
-                    self.get_logger().info(f'Pose {i} was canceled!')
-                    break
-                elif result == TaskResult.FAILED:
-                    error_code, error_msg = self.navigator.getTaskError()
-                    self.get_logger().error(f'Pose {i} failed! {error_code}:{error_msg}')
-                    break
-                    
-        except Exception as e:
-            self.get_logger().error(f'Error in navigation thread: {str(e)}')
+    def check_and_trigger_voices(self, distance_remaining) -> None:
+        """检查并触发多个语音播放"""
+        #队列为空或者总距离为0，直接返回
+        if not self.current_segment_voices or self.current_segment_total_distance < 0:
+            return
             
-        finally:
-            with self.nav_condition:
-                self.is_navigating = False
-                self.nav_thread_active = False
-                self.get_logger().info('Navigation thread finished.')
+        # 计算当前完成百分比
+        current_percent = 1.0 - (distance_remaining / self.current_segment_total_distance)
+        
+        # 检查队列中的语音触发点
+        while self.current_segment_voices:
+            voice_trigger = self.current_segment_voices[0]  # 查看队列第一个
+            
+            # 如果当前百分比大于等于触发百分比
+            if current_percent >= voice_trigger.play_percent:
+                # 触发语音播放
+                self.publish_voice_command(voice_trigger.voice_id, 1)
+                self.get_logger().info(f'Triggered voice {voice_trigger.voice_id} at {current_percent*100:.1f}% (trigger at {voice_trigger.play_percent*100}%)')
+                
+                # 从队列中移除
+                self.current_segment_voices.popleft()
+            else:
+                break  # 队列第一个未到触发点，退出循环
+
+    def setup_segment_voices(self, to_index: int) -> None:
+        """设置当前段落的语音触发队列"""
+        self.current_segment_voices.clear()
+        
+        # 获取当前段落的语音触发点
+        if to_index in self.voices_map:
+            voice_triggers = []
+            for play_percent, voice_id in self.voices_map[to_index]:
+                # 只添加目标点是当前目标点的语音
+                voice_trigger = VoiceTrigger(
+                    voice_id=voice_id,
+                    play_percent=play_percent,
+                )
+                voice_triggers.append(voice_trigger)
+            
+            # 按百分比排序
+            voice_triggers.sort(key=lambda x: x.play_percent)
+            
+            # 添加到队列
+            for trigger in voice_triggers:
+                self.current_segment_voices.append(trigger)
+            
+            self.get_logger().info(f'Added {len(voice_triggers)} voice triggers for segment {to_index}')
+        
+        # 计算段落总距离 
+        if(to_index ==0):
+            current_segment_start_pose = self.init_pose.pose
+            current_segment_end_pose = self.goal_poses[to_index].pose.pose
+            self.current_segment_total_distance = self.calculate_distance(
+                current_segment_start_pose,
+                current_segment_end_pose
+            )
+            self.get_logger().info(f'Segment 0: total distance = {self.current_segment_total_distance:.2f}m')
+        else:
+            if to_index < len(self.goal_poses):
+                current_segment_start_pose = self.goal_poses[to_index-1].pose.pose
+                current_segment_end_pose = self.goal_poses[to_index].pose.pose
+                self.current_segment_total_distance = self.calculate_distance(
+                    current_segment_start_pose,
+                    current_segment_end_pose
+                )
+                self.get_logger().info(f'Segment {to_index-1}->{to_index}: total distance = {self.current_segment_total_distance:.2f}m')
+            else:
+                self.current_segment_total_distance = 0.0
+                self.get_logger().warn(f'Invalid segment indices: {to_index}')
+
+
+    def navigation_timer_callback(self) -> None:
+        """定时器回调，处理导航状态机"""
+        # 如果不在运行状态，不处理
+        if self.nav2_state != NavigatorStateEnum.Running:
+            return
+            
+        # 如果没有目标点，不处理
+        if not self.goal_poses:
+            return
+            
+        # 根据当前状态处理
+        if self.navigation_step == NavigationStep.IDLE:
+            # 空闲状态，等待开始
+            pass
+            
+        elif self.navigation_step == NavigationStep.WAITING_FOR_START:
+                
+            current_goal = self.goal_poses[self.current_pose_index]
+            elapsed_time = (self.get_clock().now() - self.task_start_time).nanoseconds / 1e9
+            
+            # 超过等待时间才开始导航
+            if elapsed_time >= current_goal.start_time:
+                # 开始导航到当前目标点
+                self.get_logger().info(f'Starting navigation to pose {self.current_pose_index}')
+                self.get_logger().info(
+                    f'Pose details: Position ({current_goal.pose.pose.position.x}, '
+                    f'{current_goal.pose.pose.position.y})'
+                )
+                # 设置当前段落的语音触发队列
+                self.setup_segment_voices(self.current_pose_index)
+                
+                # 触发起点语音
+                self.check_and_trigger_voices(distance_remaining=self.current_segment_total_distance)
+                
+                # 开始导航
+                if self.navigator.goToPose(current_goal.pose):
+                    self.navigation_step = NavigationStep.NAVIGATING
+                    self.get_logger().info(f'Navigation to pose {self.current_pose_index} started successfully.')
+                else:
+                    self.get_logger().error(f'Failed to start navigation to pose {self.current_pose_index}')
+                    self.navigation_step = NavigationStep.FAILED
+                    
+        elif self.navigation_step == NavigationStep.NAVIGATING:
+            # 检查导航状态
+            if self.navigator.isTaskComplete():
+                result = self.navigator.getResult()
+                
+                if result == TaskResult.SUCCEEDED:
+                    self.check_and_trigger_voices(0)
+                    # 触发终点语音（百分比为1.0）
+                    self.get_logger().info(f'Pose {self.current_pose_index} succeeded!')
+                    self.current_pose_index += 1
+                    
+                    if self.current_pose_index >= len(self.goal_poses):
+                        self.navigation_step = NavigationStep.COMPLETE
+                        self.get_logger().info('All poses completed!')
+                    else:
+                        self.navigation_step = NavigationStep.WAITING_FOR_START
+                        self.get_logger().info(f'Moving to next pose {self.current_pose_index}')
+                        
+                elif result == TaskResult.CANCELED:
+                    self.get_logger().info(f'Pose {self.current_pose_index} was canceled!')
+                    self.navigation_step = NavigationStep.IDLE
+                    self.nav2_state = NavigatorStateEnum.Stop
+                    
+                elif result == TaskResult.FAILED:
+                    self.get_logger().error(f'Pose {self.current_pose_index} failed!')
+                    self.navigation_step = NavigationStep.FAILED
+                    self.nav2_state = NavigatorStateEnum.Stop
+                    
+            else:
+                # 导航进行中，获取反馈
+                try:
+                    feedback = self.navigator.getFeedback()
+                    if feedback:
+                        # 检查并触发语音
+                        self.check_and_trigger_voices(feedback.distance_remaining)
+                        
+                        # 定期记录状态（每5秒）
+                        current_time = self.get_clock().now()
+                        if self.last_log_time is None or (current_time - self.last_log_time).nanoseconds / 1e9 >= 5.0:
+                            self.last_log_time = current_time
+                            self.get_logger().info(
+                                f'ETA: {feedback.estimated_time_remaining.sec:.0f} seconds, '
+                                f'Remaining distance: {feedback.distance_remaining:.2f}m'
+                            )
+                        
+                        # 检查超时
+                        if Duration.from_msg(feedback.navigation_time) > Duration(seconds=600.0):
+                            self.get_logger().warn('Navigation timed out after 10 minutes')
+                            self.navigator.cancelTask()
+                            self.navigation_step = NavigationStep.FAILED
+                            self.nav2_state = NavigatorStateEnum.Stop
+                            
+                except Exception as e:
+                    # 获取反馈可能会失败，这通常是正常的
+                    pass
+                    
+        elif self.navigation_step == NavigationStep.COMPLETE:
+            # 所有目标点完成
+            self.get_logger().info('Navigation complete!')
+            self.navigation_step = NavigationStep.IDLE
+            self.nav2_state = NavigatorStateEnum.Stop
+            
+        elif self.navigation_step == NavigationStep.FAILED:
+            # 导航失败
+            self.get_logger().error('Navigation failed!')
+            self.navigation_step = NavigationStep.IDLE
+            self.nav2_state = NavigatorStateEnum.Stop
 
     def destroy_node(self) -> None:
         """节点销毁时的清理工作"""
-        with self.nav_condition:
-            self.nav_thread_stop_flag = True
-            self.nav_condition.notify_all()
-        
-        if self.nav_thread is not None and self.nav_thread.is_alive():
-            self.nav_thread.join(timeout=2.0)
-        
+        # 停止所有任务
+        if self.navigation_step == NavigationStep.NAVIGATING:
+            self.navigator.cancelTask()
+            
+        # 关闭导航器
         self.navigator.lifecycleShutdown()
         super().destroy_node()
 

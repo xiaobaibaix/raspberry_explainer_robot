@@ -529,7 +529,7 @@ class Board:
                 recv_data = self.port.read()
                 if recv_data:
                     for dat in recv_data:
-                        print(f' {dat:02X}', flush=True)
+                        # print(f' {dat:02X}', flush=True)
                         if self.state == PacketControllerState.PACKET_CONTROLLER_STATE_STARTBYTE1:
                             if dat == 0xAA:
                                 self.state = PacketControllerState.PACKET_CONTROLLER_STATE_STARTBYTE2
