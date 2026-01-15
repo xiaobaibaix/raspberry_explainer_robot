@@ -116,10 +116,10 @@ class NavigatorApp(Node):
         self.init_pose.header = msg.header
         self.init_pose.pose = msg.pose.pose
         
-        self.get_logger().info(
-            f'AMCL pose updated: Position ({msg.pose.pose.position.x}, '
-            f'{msg.pose.pose.position.y})'
-        )
+        # self.get_logger().info(
+        #     f'AMCL pose updated: Position ({msg.pose.pose.position.x}, '
+        #     f'{msg.pose.pose.position.y})'
+        # )
 
     def voice_end_callback(self, msg: VoiceState) -> None:
         """语音播放结束回调"""
@@ -400,6 +400,7 @@ class NavigatorApp(Node):
                         self.get_logger().info('All poses completed!')
                     else:
                         self.navigation_step = NavigationStep.WAITING_FOR_START
+                        self.task_start_time = self.get_clock().now()
                         self.get_logger().info(f'Moving to next pose {self.current_pose_index}')
                         
                 elif result == TaskResult.CANCELED:

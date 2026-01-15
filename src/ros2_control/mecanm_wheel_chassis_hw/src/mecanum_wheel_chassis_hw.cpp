@@ -361,10 +361,37 @@ namespace mecanum_wheel_chassis_hw
         (void)period;
 
         std::array<int16_t, 4> pwm_commands = {0};
-
+        //速度为0的计数
+        static int speed_zero_count[4] = {0, 0, 0, 0};
+        //指令不改变的计数
+        static int command_unchanged_count[4] = {0, 0, 0, 0};
+        static std::array<double,4> last_commands = {0.0,0.0,0.0,0.0};
+        static const int limit_speed_zero_count = 5;
+        static const int limit_command_unchanged_count = 10; 
+         //检测指令是否长时间不变，若不变则发送0命令，防止电机发热
         for (int i = 0; i < 4; i++)
         {
             pwm_commands[i] = static_cast<int16_t>(hw_commands_[i]);
+            //速度反馈多次接近于0,同时命令速度也很小,则认为停止,发送0命令
+            if(abs(hw_velocities_[i])<0.025){
+                speed_zero_count[i]=speed_zero_count[i]+1>=limit_speed_zero_count?limit_speed_zero_count:speed_zero_count[i]+1;
+                if(speed_zero_count[i]>=limit_speed_zero_count&&abs(last_commands[i]-hw_commands_[i])<1.0)
+                    command_unchanged_count[i]=command_unchanged_count[i]+1>=limit_command_unchanged_count?limit_command_unchanged_count:command_unchanged_count[i]+1;
+                else
+                    command_unchanged_count[i]=0;
+            }
+            else{
+                speed_zero_count[i]=0;
+                command_unchanged_count[i]=0;
+            }
+
+            last_commands[i]=hw_commands_[i];
+
+            if(abs(hw_commands_[i])<120.0 && speed_zero_count[i]>=limit_speed_zero_count&&command_unchanged_count[i]>=limit_command_unchanged_count)
+            {
+                pwm_commands[i]=0;
+            }
+
             if (i == 1 || i == 2)
                 pwm_commands[i] *= -1;
         }
@@ -375,6 +402,10 @@ namespace mecanum_wheel_chassis_hw
                 robot_msgs::msg::MotorState().set__id(3).set__rps(pwm_commands[2]),
                 robot_msgs::msg::MotorState().set__id(4).set__rps(pwm_commands[3]),
             })));
+        // RCLCPP_INFO(rclcpp::get_logger("mecanum_wheel_chassis"),
+        //     "cmd=[%d,%d,%d,%d],hw_cmd=[%.2f,%.2f,%.2f,%.2f]",
+        //     pwm_commands[0], pwm_commands[1], pwm_commands[2], pwm_commands[3],
+        //     hw_commands_[0], hw_commands_[1], hw_commands_[2], hw_commands_[3]);
         return hardware_interface::return_type::OK;
     }
 
