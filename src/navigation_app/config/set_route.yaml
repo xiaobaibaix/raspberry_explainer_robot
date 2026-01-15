@@ -29,11 +29,11 @@ poses:
         orientation: {x: 0.0, y: 0.0, z: 0.0, w: 1.0}
 map:
   - from_idex: 0
-    play_id: 2
-    play_percent: 0.1
-  - from_idex: 0
     play_id: 1
-    play_percent: 0.4
+    play_percent: 0.0
+  - from_idex: 0
+    play_id: 2
+    play_percent: 0.6
   - from_idex: 1
     play_id: 1
     play_percent: 0.9
@@ -43,3 +43,6 @@ map:
   - from_idex: 3
     play_id: 3
     play_percent: 0.3
+  - from_idex: 3
+    play_id: 3
+    play_percent: 1.0
