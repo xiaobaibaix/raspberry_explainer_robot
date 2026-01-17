@@ -249,7 +249,6 @@ namespace mecanum_wheel_chassis_hw
                     last_encoder_counts_[0], last_encoder_counts_[1],
                     last_encoder_counts_[2], last_encoder_counts_[3]);
 
-
         RCLCPP_INFO(rclcpp::get_logger("mecanum_wheel_chassis"), "硬件接口激活");
         return hardware_interface::CallbackReturn::SUCCESS;
     }
@@ -292,7 +291,7 @@ namespace mecanum_wheel_chassis_hw
         if (rclcpp::spin_until_future_complete(node_, result_future, std::chrono::milliseconds(5)) == rclcpp::FutureReturnCode::SUCCESS)
         {
             auto resp = result_future.get();
-            if(resp.get()->success == false)
+            if (resp.get()->success == false)
             {
                 // RCLCPP_WARN(rclcpp::get_logger("mecanum_wheel_chassis"), "编码器服务返回失败");
                 return hardware_interface::return_type::OK;
@@ -302,7 +301,9 @@ namespace mecanum_wheel_chassis_hw
                 auto pos = resp.get()->state[i].position;
                 encoders[i] = pos.at(0);
             }
-        }else{
+        }
+        else
+        {
             // RCLCPP_WARN(rclcpp::get_logger("mecanum_wheel_chassis"), "调用编码器服务失败");
             return hardware_interface::return_type::OK;
         }
@@ -361,35 +362,32 @@ namespace mecanum_wheel_chassis_hw
         (void)period;
 
         std::array<int16_t, 4> pwm_commands = {0};
-        //速度为0的计数
+        // 速度为0的计数
         static int speed_zero_count[4] = {0, 0, 0, 0};
-        //指令不改变的计数
+        // 指令不改变的计数
         static int command_unchanged_count[4] = {0, 0, 0, 0};
-        static std::array<double,4> last_commands = {0.0,0.0,0.0,0.0};
-        static const int limit_speed_zero_count = 5;
-        static const int limit_command_unchanged_count = 10; 
-         //检测指令是否长时间不变，若不变则发送0命令，防止电机发热
+        static std::array<double, 4> last_commands = {0.0, 0.0, 0.0, 0.0};
+        static const int limit_speed_zero_count = 3;
+        static const int limit_command_unchanged_count = 3;
+        // 检测指令是否长时间不变，若不变则发送0命令，防止电机发热
         for (int i = 0; i < 4; i++)
         {
             pwm_commands[i] = static_cast<int16_t>(hw_commands_[i]);
-            //速度反馈多次接近于0,同时命令速度也很小,则认为停止,发送0命令
-            if(abs(hw_velocities_[i])<0.025){
-                speed_zero_count[i]=speed_zero_count[i]+1>=limit_speed_zero_count?limit_speed_zero_count:speed_zero_count[i]+1;
-                if(speed_zero_count[i]>=limit_speed_zero_count&&abs(last_commands[i]-hw_commands_[i])<1.0)
-                    command_unchanged_count[i]=command_unchanged_count[i]+1>=limit_command_unchanged_count?limit_command_unchanged_count:command_unchanged_count[i]+1;
-                else
-                    command_unchanged_count[i]=0;
-            }
-            else{
-                speed_zero_count[i]=0;
-                command_unchanged_count[i]=0;
-            }
+            // 速度反馈多次接近于0,同时命令速度也很小,则认为停止,发送0命令
+            if (abs(hw_velocities_[i]) < 0.025)
+                speed_zero_count[i] = speed_zero_count[i] + 1 >= limit_speed_zero_count ? limit_speed_zero_count : speed_zero_count[i] + 1;
+            else
+                speed_zero_count[i] = 0;
+            if (abs(last_commands[i] - hw_commands_[i]) < 5.0)
+                command_unchanged_count[i] = command_unchanged_count[i] + 1 >= limit_command_unchanged_count ? limit_command_unchanged_count : command_unchanged_count[i] + 1;
+            else
+                command_unchanged_count[i] = 0;
 
-            last_commands[i]=hw_commands_[i];
+            last_commands[i] = hw_commands_[i];
 
-            if(abs(hw_commands_[i])<120.0 && speed_zero_count[i]>=limit_speed_zero_count&&command_unchanged_count[i]>=limit_command_unchanged_count)
+            if (abs(hw_commands_[i]) < 120.0 && speed_zero_count[i] >= limit_speed_zero_count && command_unchanged_count[i] >= limit_command_unchanged_count)
             {
-                pwm_commands[i]=0;
+                pwm_commands[i] = 0;
             }
 
             if (i == 1 || i == 2)
